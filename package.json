@@ -11,7 +11,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://gitlab.com/ksumarshmallow/obsidian-pikoboard.git"
+    "url": "git+https://github.com/ksumarshmallow/obsidian-pikoboard.git"
   },
   "engines": {
     "node": ">=18"

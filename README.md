@@ -24,7 +24,7 @@
 Закройте хранилище или откройте другое на время установки. В терминале из корневой папки нужного хранилища выполните:
 
 ```sh
-git clone https://gitlab.com/ksumarshmallow/obsidian-pikoboard.git .obsidian/plugins/pikoboard
+git clone https://github.com/ksumarshmallow/obsidian-pikoboard.git .obsidian/plugins/pikoboard
 ```
 
 После клонирования:
@@ -40,7 +40,7 @@ git clone https://gitlab.com/ksumarshmallow/obsidian-pikoboard.git .obsidian/plu
 
 ### Без Git
 
-Скачайте репозиторий через **Code → Download source code → zip**, распакуйте и скопируйте **`main.js`, `manifest.json`, `styles.css`, `LICENSE`, `THIRD-PARTY-LICENSES.txt`** в `.obsidian/plugins/pikoboard/` внутри своего хранилища. Затем обновите список сторонних плагинов и включите PikoBoard.
+Откройте [репозиторий на GitHub](https://github.com/ksumarshmallow/obsidian-pikoboard) → **Code → Download ZIP**, распакуйте и скопируйте **`main.js`, `manifest.json`, `styles.css`, `LICENSE`, `THIRD-PARTY-LICENSES.txt`** в `.obsidian/plugins/pikoboard/` внутри своего хранилища. Затем обновите список сторонних плагинов и включите PikoBoard.
 
 ### Обновление
 
@@ -55,7 +55,7 @@ git clone https://gitlab.com/ksumarshmallow/obsidian-pikoboard.git .obsidian/plu
 
 3. Включите PikoBoard снова. Пересборка не нужна.
 
-Кнопка Obsidian **«Проверить обновления»** пока не обновляет эту установку из GitLab. Для штатного обновления через каталог Obsidian нужна публикация плагина в каталоге с релизами GitHub ([правила Obsidian](https://docs.obsidian.md/Plugins/Releasing/Submit%20your%20plugin)).
+Кнопка Obsidian **«Проверить обновления»** пока не обновляет установку напрямую из GitHub или GitLab. Для штатного обновления через каталог Obsidian нужна публикация плагина в каталоге с релизами GitHub ([правила Obsidian](https://docs.obsidian.md/Plugins/Releasing/Submit%20your%20plugin)).
 
 При ручной установке замените пять файлов из раздела «Без Git». Если папка уже существует, не клонируйте поверх неё.
 
@@ -108,7 +108,7 @@ git clone https://gitlab.com/ksumarshmallow/obsidian-pikoboard.git .obsidian/plu
 Требуется Node.js 18+. Для сборки и тестов нет npm-зависимостей, `npm install` не нужен.
 
 ```sh
-git clone https://gitlab.com/ksumarshmallow/obsidian-pikoboard.git
+git clone https://github.com/ksumarshmallow/obsidian-pikoboard.git
 cd obsidian-pikoboard
 npm test
 npm run check
