@@ -1,0 +1,2942 @@
+'use strict';
+const {
+  Plugin,
+  ItemView,
+  Modal,
+  FuzzySuggestModal,
+  Menu,
+  Notice,
+  TFile,
+  MarkdownRenderer,
+  Component,
+  Scope,
+  setIcon,
+  normalizePath,
+} = require('obsidian');
+const C = require('./core');
+const TYPE = 'personal-board-view';
+const CONTEXT = { source: 'personal-board' };
+const statuses = [
+  { value: 'open', label: 'backlog', cls: 'plan', icon: 'inbox' },
+  { value: 'in-progress', label: 'in progress', cls: 'work', icon: 'circle-dashed' },
+  { value: 'done', label: 'done', cls: 'done', icon: 'circle-check' },
+];
+function el(parent, tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  parent.append(e);
+  return e;
+}
+function button(parent, text, action, cls = '') {
+  const b = el(parent, 'button', 'pb-button ' + cls, text);
+  b.type = 'button';
+  b.onclick = action;
+  return b;
+}
+function icon(parent, name, label, action) {
+  const b = button(parent, '', action, 'pb-icon');
+  setIcon(b, name);
+  b.setAttribute('aria-label', label);
+  return b;
+}
+function fileTitle(v) {
+  return C.linkTarget(v).split('/').pop();
+}
+function dateText(v) {
+  if (!v) return 'Срок';
+  const d = new Date(v.length === 10 ? v + 'T12:00:00' : v);
+  return Number.isNaN(+d)
+    ? v
+    : d.toLocaleDateString('ru-RU', {
+        day: 'numeric',
+        month: 'short',
+        ...(d.getFullYear() !== new Date().getFullYear() ? { year: 'numeric' } : {}),
+      });
+}
+function errorMessage(e) {
+  if (e.message === 'UPDATE_CONFLICT') return 'Запись уже изменена. Откройте её меню заново.';
+  if (e.message === 'NEXT_CONFLICT')
+    return 'Следующий шаг уже изменён. Черновик сохранён — сверьте его с текущим шагом.';
+  if (e.message === 'HISTORY_FORMAT' || e.message === 'NEXT_FORMAT')
+    return 'Не удалось сохранить: служебные блоки заметки повреждены. Текст остался в черновике.';
+  if (e.message?.startsWith('INVALID_TAG:'))
+    return 'В теге можно использовать буквы, цифры, дефис, подчёркивание и /.';
+  if (e.message === 'BODY_CONFLICT')
+    return 'Текст изменён в другом окне. Ваша версия сохранена как черновик.';
+  return e.message || String(e);
+}
+function grow(input, min = 64, max = 280) {
+  if (input._rich) return;
+  input.style.height = 'auto';
+  input.style.height = Math.max(min, Math.min(max, input.scrollHeight)) + 'px';
+}
+function positionPopup(popup, anchor) {
+  const win = anchor.ownerDocument.defaultView;
+  popup.style.position = 'fixed';
+  const r = anchor.getBoundingClientRect(),
+    left = popup.dataset.align === 'end' ? r.right - popup.offsetWidth : r.left;
+  popup.style.left = Math.max(12, Math.min(left, win.innerWidth - popup.offsetWidth - 12)) + 'px';
+  const room = win.innerHeight - r.bottom - 12;
+  popup.style.top =
+    (room >= Math.min(popup.offsetHeight, 200)
+      ? r.bottom + 5
+      : Math.max(12, r.top - popup.offsetHeight - 5)) + 'px';
+}
+function floatingPopup(anchor, cls) {
+  const doc = anchor.ownerDocument,
+    win = doc.defaultView;
+  const layer = el(anchor.closest('.modal') || doc.body, 'div', 'personal-board pb-floating-layer');
+  const popup = el(layer, 'div', 'pb-popover ' + cls);
+  const reposition = (e) => {
+    if (!anchor.isConnected) return;
+    if (e && popup.contains(e.target)) return;
+    positionPopup(popup, anchor);
+  };
+  win.addEventListener('resize', reposition);
+  doc.addEventListener('scroll', reposition, true);
+  const observer = new ResizeObserver(() => reposition());
+  observer.observe(anchor);
+  popup._dispose = () => {
+    observer.disconnect();
+    win.removeEventListener('resize', reposition);
+    doc.removeEventListener('scroll', reposition, true);
+    layer.remove();
+  };
+  return popup;
+}
+let activeActionMenu = null;
+function actionMenu(anchor, items, label = 'Действия с записью', app) {
+  const previous = activeActionMenu;
+  if (previous) {
+    previous.close();
+    if (previous.anchor === anchor) return;
+  }
+  const doc = anchor.ownerDocument,
+    popup = floatingPopup(anchor, 'pb-action-menu');
+  popup.dataset.align = 'end';
+  popup.setAttribute('role', 'menu');
+  popup.setAttribute('aria-label', label);
+  anchor.setAttribute('aria-expanded', 'true');
+  const choices = [];
+  let closed = false,
+    keyScope = null;
+  const close = (focus = false) => {
+    if (closed) return;
+    closed = true;
+    if (keyScope) app.keymap.popScope(keyScope);
+    doc.removeEventListener('pointerdown', outside, true);
+    doc.defaultView.removeEventListener('keydown', keyboard, true);
+    observer.disconnect();
+    popup._dispose();
+    anchor.setAttribute('aria-expanded', 'false');
+    if (activeActionMenu?.popup === popup) activeActionMenu = null;
+    if (focus && anchor.isConnected) anchor.focus();
+  };
+  const outside = (e) => {
+    if (!popup.contains(e.target) && !anchor.contains(e.target)) close();
+  };
+  const keyboard = (e) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopImmediatePropagation?.();
+      e.stopPropagation();
+      close(true);
+    } else if (e.key === 'Tab') close();
+  };
+  const observer = new MutationObserver(() => {
+    if (!anchor.isConnected) close();
+  });
+  observer.observe(doc.body, { childList: true, subtree: true });
+  activeActionMenu = { anchor, popup, close };
+  if (app?.keymap) {
+    keyScope = new Scope();
+    keyScope.register([], 'Escape', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      close(true);
+      return false;
+    });
+    app.keymap.pushScope(keyScope);
+  }
+  for (const item of items) {
+    if (item.separator) {
+      el(popup, 'div', 'pb-menu-separator').setAttribute('role', 'separator');
+      continue;
+    }
+    const b = button(
+      popup,
+      '',
+      () => {
+        close(true);
+        Promise.resolve()
+          .then(item.action)
+          .catch((e) => new Notice(errorMessage(e)));
+      },
+      'pb-menu-item' + (item.danger ? ' is-danger' : ''),
+    );
+    b.setAttribute('role', 'menuitem');
+    b.tabIndex = -1;
+    setIcon(el(b, 'span', 'pb-menu-icon'), item.icon);
+    el(b, 'span', 'pb-menu-label', item.label);
+    choices.push(b);
+  }
+  popup.onkeydown = (e) => {
+    const index = choices.indexOf(doc.activeElement);
+    if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) {
+      e.preventDefault();
+      e.stopPropagation();
+      const n =
+        e.key === 'Home'
+          ? 0
+          : e.key === 'End'
+            ? choices.length - 1
+            : (index + (e.key === 'ArrowDown' ? 1 : -1) + choices.length) % choices.length;
+      choices[n]?.focus();
+    }
+  };
+  doc.addEventListener('pointerdown', outside, true);
+  doc.defaultView.addEventListener('keydown', keyboard, true);
+  positionPopup(popup, anchor);
+  choices[0]?.focus();
+  return activeActionMenu;
+}
+function picker(parent, label, aria, items, onChange, cls = '') {
+  const wrap = el(parent, 'div', 'pb-picker-wrap');
+  let popup = null,
+    cleanup = () => {};
+  const trigger = button(wrap, '', () => (popup ? close() : open()), 'pb-picker ' + cls);
+  trigger.setAttribute('aria-label', aria);
+  trigger.setAttribute('aria-haspopup', 'listbox');
+  trigger.setAttribute('aria-expanded', 'false');
+  el(trigger, 'span', 'pb-picker-label', label);
+  setIcon(el(trigger, 'span', 'pb-chevron'), 'chevron-down');
+  function close(focus = false) {
+    if (!popup) return;
+    cleanup();
+    popup._dispose();
+    popup = null;
+    trigger.setAttribute('aria-expanded', 'false');
+    if (focus) trigger.focus();
+  }
+  function open() {
+    popup = floatingPopup(trigger, '');
+    popup.setAttribute('role', 'listbox');
+    popup.setAttribute('aria-label', aria);
+    const choices = typeof items === 'function' ? items() : items;
+    choices.forEach((i) => {
+      const b = button(
+        popup,
+        i.label,
+        () => {
+          close(true);
+          Promise.resolve(onChange(i)).catch((e) => new Notice(errorMessage(e)));
+        },
+        'pb-option',
+      );
+      if (i.icon) {
+        const mark = el(b, 'span', 'pb-status-icon');
+        setIcon(mark, i.icon);
+        mark.setAttribute('aria-hidden', 'true');
+        b.prepend(mark);
+      }
+      b.setAttribute('role', 'option');
+      b.setAttribute('aria-selected', String(!!i.selected));
+    });
+    positionPopup(popup, trigger);
+    trigger.setAttribute('aria-expanded', 'true');
+    const outside = (e) => {
+      if (!wrap.contains(e.target) && !popup?.contains(e.target)) close();
+    };
+    document.addEventListener('pointerdown', outside);
+    cleanup = () => document.removeEventListener('pointerdown', outside);
+    popup.onkeydown = (e) => {
+      const opts = [...popup.querySelectorAll('button')],
+        index = opts.indexOf(document.activeElement);
+      if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) {
+        e.preventDefault();
+        e.stopPropagation();
+        const n =
+          e.key === 'Home'
+            ? 0
+            : e.key === 'End'
+              ? opts.length - 1
+              : (index + (e.key === 'ArrowDown' ? 1 : -1) + opts.length) % opts.length;
+        opts[n]?.focus();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        close(true);
+      } else if (e.key === 'Tab') close();
+    };
+    (popup.querySelector('[aria-selected="true"]') || popup.firstElementChild)?.focus();
+  }
+  trigger.onkeydown = (e) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!popup) open();
+    }
+  };
+  wrap._dispose = () => close();
+  return trigger;
+}
+// Embedded editor prototype extraction adapted from Matthew Meyers / Fevol (MIT).
+let EmbeddedEditorBase;
+function richEditor(app, container, value, onChange) {
+  if (!EmbeddedEditorBase) {
+    const widget = app.embedRegistry.embedByExtension.md(
+      { app, containerEl: document.createElement('div'), state: {} },
+      null,
+      '',
+    );
+    widget.load();
+    widget.editable = true;
+    widget.showEditor();
+    EmbeddedEditorBase = Object.getPrototypeOf(Object.getPrototypeOf(widget.editMode)).constructor;
+    widget.unload();
+  }
+  const owner = { app, onMarkdownScroll() {}, getMode: () => 'source' };
+  class Editor extends EmbeddedEditorBase {
+    onUpdate(update, changed) {
+      super.onUpdate(update, changed);
+      if (changed) this.changed?.();
+    }
+    updateBottomPadding() {}
+    buildLocalExtensions() {
+      const extensions = super.buildLocalExtensions();
+      const { placeholder } = require('@codemirror/view');
+      extensions.push(placeholder('Описание'));
+      return extensions;
+    }
+  }
+  const instance = new Editor(app, container, owner);
+  instance.load();
+  owner.editMode = instance;
+  owner.editor = instance.editor;
+  instance.set(value);
+  instance.changed = onChange;
+  const cm = instance.editor.cm;
+  cm.contentDOM.setAttribute('aria-label', 'Описание');
+  cm.contentDOM.addEventListener('focusin', () => {
+    if (app.workspace.activeEditor !== owner) instance.previousEditor = app.workspace.activeEditor;
+    app.workspace.activeEditor = owner;
+  });
+  cm.contentDOM.addEventListener('blur', () => {
+    if (app.workspace.activeEditor === owner) app.workspace.activeEditor = instance.previousEditor;
+  });
+  instance.dispose = () => {
+    instance.changed = null;
+    if (app.workspace.activeEditor === owner) app.workspace.activeEditor = instance.previousEditor;
+    instance.unload();
+    instance.destroy();
+  };
+  return instance;
+}
+class AskModal extends Modal {
+  constructor(
+    app,
+    title,
+    placeholder,
+    callback,
+    value = '',
+    allowEmpty = false,
+    multiline = false,
+  ) {
+    super(app);
+    Object.assign(this, { heading: title, placeholder, callback, value, allowEmpty, multiline });
+  }
+  onOpen() {
+    this.modalEl.addClass('pb-prompt');
+    this.contentEl.addClass('personal-board');
+    const form = el(this.contentEl, 'form');
+    const input = el(form, this.multiline ? 'textarea' : 'input', 'pb-input');
+    input.value = this.value;
+    input.placeholder = this.placeholder;
+    input.setAttribute('aria-label', this.heading);
+    input.required = !this.allowEmpty;
+    const send = icon(form, 'arrow-right', 'Подтвердить', () => form.requestSubmit());
+    form.onsubmit = async (e) => {
+      e.preventDefault();
+      if (this.busy || (!input.value.trim() && !this.allowEmpty)) return;
+      this.busy = true;
+      send.disabled = true;
+      try {
+        await this.callback(input.value.trim());
+        this.close();
+      } catch (err) {
+        new Notice(errorMessage(err));
+        send.disabled = false;
+        this.busy = false;
+      }
+    };
+    setTimeout(() => input.focus(), 30);
+  }
+}
+class DeleteConfirmModal extends Modal {
+  constructor(app, title, resolve) {
+    super(app);
+    this.taskTitle = title;
+    this.resolve = resolve;
+    this.confirmed = false;
+  }
+  onOpen() {
+    this.modalEl.addClass('pb-delete-modal');
+    this.contentEl.addClass('personal-board');
+    el(this.contentEl, 'h3', '', 'Удалить задачу?');
+    el(this.contentEl, 'p', 'pb-delete-name', this.taskTitle);
+    el(this.contentEl, 'p', 'pb-delete-hint', 'Файл будет перемещён в корзину хранилища.');
+    const actions = el(this.contentEl, 'div', 'pb-delete-actions');
+    const cancel = button(actions, 'Отмена', () => this.close());
+    button(
+      actions,
+      'Удалить',
+      () => {
+        this.confirmed = true;
+        this.close();
+      },
+      'pb-danger',
+    );
+    cancel.focus();
+  }
+  onClose() {
+    this.contentEl.empty();
+    this.resolve(this.confirmed);
+  }
+}
+class ConfirmMessageModal extends Modal {
+  constructor(app, heading, text, label, resolve, danger = false) {
+    super(app);
+    Object.assign(this, { heading, text, label, resolve, danger });
+    this.confirmed = false;
+  }
+  onOpen() {
+    this.modalEl.addClass('pb-delete-modal');
+    this.contentEl.addClass('personal-board');
+    el(this.contentEl, 'h3', '', this.heading);
+    el(this.contentEl, 'p', 'pb-delete-name', this.text);
+    const actions = el(this.contentEl, 'div', 'pb-delete-actions');
+    const cancel = button(actions, 'Отмена', () => this.close());
+    button(
+      actions,
+      this.label,
+      () => {
+        this.confirmed = true;
+        this.close();
+      },
+      this.danger ? 'pb-danger' : 'pb-new',
+    );
+    cancel.focus();
+  }
+  onClose() {
+    this.resolve(this.confirmed);
+  }
+}
+class EditMessageModal extends Modal {
+  constructor(app, update, save) {
+    super(app);
+    Object.assign(this, { update, save });
+  }
+  onOpen() {
+    this.modalEl.addClass('pb-message-editor');
+    this.contentEl.addClass('personal-board');
+    el(this.contentEl, 'h3', '', 'Изменить запись');
+    const input = el(this.contentEl, 'textarea', 'pb-message-edit-input');
+    input.value = this.update.text;
+    input.setAttribute('aria-label', 'Текст записи');
+    const actions = el(this.contentEl, 'div', 'pb-delete-actions');
+    button(actions, 'Отмена', () => this.close());
+    const save = button(
+      actions,
+      'Сохранить',
+      async () => {
+        if (this.busy || !input.value.trim()) return;
+        this.busy = true;
+        save.disabled = true;
+        try {
+          await this.save(input.value.trim());
+          this.close();
+        } catch (e) {
+          new Notice(errorMessage(e));
+          this.busy = false;
+          save.disabled = false;
+        }
+      },
+      'pb-new',
+    );
+    input.onkeydown = (e) => {
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        save.click();
+      }
+    };
+    input.focus();
+  }
+}
+class PickModal extends FuzzySuggestModal {
+  constructor(app, items, callback, placeholder) {
+    super(app);
+    this.items = items;
+    this.callback = callback;
+    this.setPlaceholder(placeholder);
+  }
+  getItems() {
+    return this.items;
+  }
+  getItemText(i) {
+    return i.label;
+  }
+  onChooseItem(i) {
+    Promise.resolve(this.callback(i)).catch((e) => new Notice(errorMessage(e)));
+  }
+}
+// One journal draft per task, shared by the board and the open task window.
+class JournalModel {
+  constructor(plugin, file) {
+    this.plugin = plugin;
+    this.file = file;
+    const d = plugin.draft(file.path);
+    this.update = d.update || '';
+    this.nextDraft = d.nextDraft;
+    this.nextBase = d.nextBase;
+    this.next = '';
+    this.retry = d.updateId ? { id: d.updateId, text: d.updateSentText } : null;
+    this.listeners = new Set();
+    this.error = '';
+    this.busy = false;
+  }
+  notify() {
+    for (const fn of this.listeners) fn();
+  }
+  subscribe(fn) {
+    this.listeners.add(fn);
+    fn();
+    return () => this.listeners.delete(fn);
+  }
+  save() {
+    if (this.deleted) return Promise.resolve();
+    return this.plugin.setDraft(this.file.path, {
+      update: this.update || undefined,
+      updateId: this.retry?.id,
+      updateSentText: this.retry?.text,
+      nextDraft: this.nextDraft,
+      nextBase: this.nextDraft === undefined ? undefined : this.nextBase,
+    });
+  }
+  setText(mode, text) {
+    if (mode === 'next') {
+      this.nextDraft = text;
+      this.nextRevision = (this.nextRevision || 0) + 1;
+    } else this.update = text;
+    this.error = '';
+    this.conflict = false;
+    this.notify();
+    this.save().catch((e) => this.fail(e));
+  }
+  fail(e) {
+    this.error = errorMessage(e);
+    this.conflict = e.message === 'NEXT_CONFLICT';
+    this.notify();
+    new Notice(this.error);
+  }
+  syncNext(value = '') {
+    this.next = value;
+    if (this.nextDraft === undefined || this.nextDraft === this.nextBase) {
+      this.nextBase = value;
+      if (this.nextDraft !== undefined) this.nextDraft = value;
+    }
+    this.notify();
+  }
+  async prepareNext() {
+    const revision = this.nextRevision || 0,
+      note = await this.plugin.note(this.file);
+    this.syncNext(note.nextAction || '');
+    if ((this.nextRevision || 0) === revision && !this.nextDraft?.trim()) {
+      this.nextDraft = this.next;
+      this.nextBase = this.next;
+      this.error = '';
+      this.conflict = false;
+      await this.save();
+    }
+    this.notify();
+  }
+  async rebaseNext() {
+    const note = await this.plugin.note(this.file);
+    this.next = note.nextAction || '';
+    this.nextBase = this.next;
+    this.error = '';
+    this.conflict = false;
+    await this.save();
+    this.notify();
+  }
+  async submit(mode) {
+    if (this.busy || this.checkPending) return false;
+    const original = mode === 'next' ? this.nextDraft : this.update;
+    if (original === undefined || !original.trim()) return false;
+    this.busy = true;
+    this.error = '';
+    this.notify();
+    try {
+      if (mode === 'next') {
+        await this.plugin.setNext(this.file, this.nextBase || '', original.trim());
+        if (this.nextDraft === original) {
+          this.nextDraft = undefined;
+          this.nextBase = undefined;
+        } else this.nextBase = original.trim();
+        this.next = original.trim();
+      } else {
+        if (!this.retry || this.retry.text !== original.trim())
+          this.retry = { id: crypto.randomUUID(), text: original.trim() };
+        await this.save();
+        await this.plugin.addUpdate(this.file, this.retry.text, this.retry.id);
+        if (this.update === original) this.update = '';
+        this.retry = null;
+      }
+      await this.save();
+      this.plugin.refresh();
+      return true;
+    } catch (e) {
+      this.fail(e);
+      return false;
+    } finally {
+      this.busy = false;
+      this.notify();
+    }
+  }
+  async toggleNextCheck(expected, line, checked) {
+    if (this.busy) return false;
+    this.checkPending = (this.checkPending || 0) + 1;
+    this.notify();
+    try {
+      const next = await this.plugin.toggleNextCheck(this.file, expected, line, checked);
+      this.syncNext(next);
+      await this.save();
+      return true;
+    } catch (e) {
+      this.fail(e);
+      return false;
+    } finally {
+      this.checkPending--;
+      this.notify();
+    }
+  }
+  async clearNext() {
+    if (this.busy || this.checkPending || !this.next) return;
+    const expected = this.next;
+    this.busy = true;
+    this.error = '';
+    this.notify();
+    try {
+      await this.plugin.setNext(this.file, expected, '');
+      this.next = '';
+      if (this.nextDraft !== undefined && this.nextDraft !== expected) this.nextBase = '';
+      else {
+        this.nextDraft = undefined;
+        this.nextBase = undefined;
+      }
+      await this.save();
+      this.plugin.refresh();
+      const fragment = document.createDocumentFragment();
+      el(fragment, 'span', '', 'Следующий шаг убран. ');
+      const undo = el(fragment, 'button', 'pb-notice-undo', 'Вернуть');
+      undo.onclick = async () => {
+        undo.disabled = true;
+        try {
+          await this.plugin.setNext(this.file, '', expected);
+          this.syncNext(expected);
+          notice.hide();
+        } catch (e) {
+          undo.disabled = false;
+          this.fail(e);
+        }
+      };
+      const notice = new Notice(fragment, 8000);
+    } catch (e) {
+      this.fail(e);
+    } finally {
+      this.busy = false;
+      this.notify();
+    }
+  }
+}
+class JournalComposer {
+  constructor(plugin, file, parent) {
+    this.plugin = plugin;
+    this.file = file;
+    this.model = plugin.journal(file);
+    this.mode = 'note';
+    this.disposed = false;
+    this.form = el(parent, 'form', 'pb-journal-composer');
+    const modes = el(this.form, 'div', 'pb-composer-modes');
+    this.noteButton = button(modes, 'Запись', () => this.setMode('note'), 'pb-composer-mode');
+    this.nextButton = button(
+      modes,
+      'Следующий шаг',
+      () => this.setMode('next'),
+      'pb-composer-mode',
+    );
+    this.input = el(this.form, 'textarea', 'pb-comment-input');
+    this.input.rows = 1;
+    const actions = el(this.form, 'div', 'pb-composer-actions');
+    this.attach = icon(actions, 'paperclip', 'Прикрепить к записи', (e) => this.attachMenu(e));
+    this.attach.classList.add('pb-attach');
+    this.checklist = button(actions, '', () => this.addChecklist(), 'pb-compose-checklist');
+    setIcon(el(this.checklist, 'span', 'pb-menu-icon'), 'list-checks');
+    el(this.checklist, 'span', '', 'Чеклист');
+    this.checklist.setAttribute('aria-label', 'Добавить пункт чеклиста');
+    this.send = icon(actions, 'arrow-up', 'Записать', () => this.form.requestSubmit());
+    this.send.classList.add('pb-send');
+    this.error = el(this.form, 'div', 'pb-compose-error');
+    this.error.setAttribute('role', 'status');
+    this.rebase = button(
+      this.form,
+      'Сверить с текущим шагом',
+      () => this.model.rebaseNext().catch((e) => this.model.fail(e)),
+      'pb-rebase',
+    );
+    this.rebase.hidden = true;
+    this.input.oninput = () => this.model.setText(this.mode, this.input.value);
+    this.input.onkeydown = (e) => {
+      if (e.key !== 'Enter' || e.isComposing) return;
+      if (this.mode === 'next' && !e.shiftKey && !e.metaKey && !e.ctrlKey) {
+        const edit = C.continueChecklist(
+          this.input.value,
+          this.input.selectionStart,
+          this.input.selectionEnd,
+        );
+        if (edit) {
+          e.preventDefault();
+          e.stopPropagation();
+          this.model.setText('next', edit.value);
+          this.input.setSelectionRange(edit.cursor, edit.cursor);
+          return;
+        }
+      }
+      if (!e.shiftKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        this.form.requestSubmit();
+      }
+    };
+    this.input.onblur = () => this.model.save().catch((e) => this.model.fail(e));
+    this.form.onsubmit = (e) => {
+      e.preventDefault();
+      this.submit();
+    };
+    this.unsubscribe = this.model.subscribe(() => this.paint());
+  }
+  addChecklist() {
+    if (this.mode !== 'next') return;
+    try {
+      const value = C.addChecklistItem(this.input.value, '');
+      this.model.setText('next', value);
+      this.input.focus();
+      const cursor = value.replace(/\r?\n$/, '').length;
+      this.input.setSelectionRange(cursor, cursor);
+    } catch (e) {
+      this.model.fail(e);
+    }
+  }
+  async submit() {
+    const mode = this.mode,
+      seq = this.modeSeq;
+    const ok = await this.model.submit(mode);
+    if (
+      ok &&
+      mode === 'next' &&
+      !this.disposed &&
+      this.mode === 'next' &&
+      this.modeSeq === seq &&
+      this.model.nextDraft === undefined
+    ) {
+      this.mode = 'note';
+      this.paint();
+      this.input.blur();
+    }
+  }
+  paint() {
+    if (this.disposed) return;
+    const isNext = this.mode === 'next',
+      value = isNext ? (this.model.nextDraft ?? this.model.next) : this.model.update;
+    if (this.input.value !== value) this.input.value = value;
+    this.input.placeholder = isNext ? 'Что сделать дальше?' : 'Что изменилось?';
+    this.input.setAttribute('aria-label', isNext ? 'Следующий шаг' : 'Комментарий');
+    this.noteButton.classList.toggle('is-active', !isNext);
+    this.nextButton.classList.toggle('is-active', isNext);
+    this.noteButton.setAttribute('aria-pressed', String(!isNext));
+    this.nextButton.setAttribute('aria-pressed', String(isNext));
+    this.form.classList.toggle('has-text', !!value.trim());
+    this.checklist.hidden = !isNext;
+    this.send.disabled =
+      this.model.busy ||
+      this.model.checkPending ||
+      (isNext
+        ? !value.trim() ||
+          this.model.nextDraft === undefined ||
+          this.model.nextDraft.trim() === (this.model.nextBase || '')
+        : !value.trim());
+    this.send.setAttribute('aria-label', isNext ? 'Сохранить шаг' : 'Записать');
+    this.send.classList.toggle('pb-save-step', isNext);
+    if (this.sendMode !== this.mode) {
+      this.sendMode = this.mode;
+      if (isNext) this.send.textContent = 'Сохранить шаг';
+      else {
+        this.send.textContent = '';
+        setIcon(this.send, 'arrow-up');
+      }
+    }
+    this.attach.setAttribute(
+      'aria-label',
+      isNext ? 'Прикрепить к следующему шагу' : 'Прикрепить к записи',
+    );
+    this.error.textContent = this.model.error;
+    this.error.hidden = !this.model.error;
+    this.rebase.hidden = !this.model.conflict;
+    grow(this.input, 32, 120);
+  }
+  async setMode(mode) {
+    const seq = (this.modeSeq = (this.modeSeq || 0) + 1);
+    if (mode === 'next') {
+      try {
+        await this.model.prepareNext();
+      } catch (e) {
+        this.model.fail(e);
+        return;
+      }
+    }
+    if (this.disposed || seq !== this.modeSeq) return;
+    this.mode = mode;
+    this.paint();
+    this.input.focus();
+  }
+  appendLink(target, mode) {
+    const link = this.plugin.app.fileManager.generateMarkdownLink(target, this.file.path);
+    const text = mode === 'next' ? (this.model.nextDraft ?? this.model.next) : this.model.update;
+    this.model.setText(mode, text.trimEnd() + (text.trim() ? '\n' : '') + link);
+    if (!this.disposed) {
+      this.mode = mode;
+      this.paint();
+      this.input.focus();
+    }
+  }
+  attachMenu(e) {
+    const mode = this.mode,
+      menu = new Menu();
+    menu.addItem((i) =>
+      i
+        .setTitle('Заметка или исследование')
+        .setIcon('file-text')
+        .onClick(() =>
+          this.plugin.chooseNote(this.file, (target) => this.appendLink(target, mode)),
+        ),
+    );
+    menu.addItem((i) =>
+      i
+        .setTitle('Файл')
+        .setIcon('paperclip')
+        .onClick(() =>
+          this.plugin
+            .uploadMaterial((target) => this.appendLink(target, mode))
+            .catch((err) => this.model.fail(err)),
+        ),
+    );
+    menu.showAtMouseEvent(e);
+  }
+  dispose() {
+    this.disposed = true;
+    this.unsubscribe();
+    this.model.save().catch(console.error);
+  }
+}
+function nextStep(parent, plugin, file, edit) {
+  const wrap = el(parent, 'div', 'pb-next-step');
+  wrap.hidden = true;
+  el(wrap, 'span', 'pb-next-label', 'Следующий шаг');
+  const content = el(wrap, 'div', 'pb-next-text markdown-rendered');
+  const change = icon(wrap, 'pencil', 'Изменить следующий шаг', edit);
+  change.classList.add('pb-next-edit');
+  const done = icon(wrap, 'x', 'Убрать следующий шаг', () => model.clearNext());
+  done.classList.add('pb-next-remove');
+  const model = plugin.journal(file);
+  let signature = null,
+    component = null,
+    pending = null,
+    seq = 0;
+  const unsubscribe = model.subscribe(() => {
+    wrap.hidden = !model.next;
+    done.disabled = change.disabled = !!(model.busy || model.checkPending);
+    content.querySelectorAll('input[type=checkbox]').forEach((box) => {
+      if (box.dataset.pbCheck) box.disabled = !!model.busy;
+    });
+    if (signature === model.next) return;
+    signature = model.next;
+    const source = model.next,
+      checks = C.parseChecklist(source);
+    const generation = ++seq,
+      stage = document.createElement('div'),
+      renderComponent = new Component();
+    pending?.unload();
+    pending = renderComponent;
+    renderComponent.load();
+    MarkdownRenderer.render(plugin.app, model.next, stage, file.path, renderComponent)
+      .then(() => {
+        if (seq !== generation) return;
+        stage.querySelectorAll('a.internal-link').forEach(
+          (a) =>
+            (a.onclick = (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              plugin.app.workspace.openLinkText(
+                a.dataset.href || a.getAttribute('href'),
+                file.path,
+                true,
+              );
+            }),
+        );
+        const boxes = [...stage.querySelectorAll('input[type=checkbox]')].filter(
+          (box) => !box.closest('.internal-embed'),
+        );
+        stage.querySelectorAll('input[type=checkbox]').forEach((box) => {
+          box.disabled = true;
+        });
+        if (boxes.length === checks.length)
+          boxes.forEach((box, index) => {
+            const item = checks[index];
+            box.dataset.pbCheck = 'true';
+            box.disabled = !!model.busy;
+            box.checked = item.checked;
+            box.setAttribute('aria-label', item.text || 'Пункт чеклиста');
+            box.onclick = (e) => e.stopPropagation();
+            box.onchange = async () => {
+              const checked = box.checked;
+              if (!(await model.toggleNextCheck(source, item.line, checked)) && box.isConnected)
+                box.checked = item.checked;
+            };
+          });
+        component?.unload();
+        component = renderComponent;
+        content.replaceChildren(...stage.childNodes);
+      })
+      .catch((e) => {
+        if (seq === generation) signature = null;
+        console.error(e);
+      })
+      .finally(() => {
+        if (component !== renderComponent) renderComponent.unload();
+        if (pending === renderComponent) pending = null;
+      });
+  });
+  wrap._dispose = () => {
+    seq++;
+    unsubscribe();
+    pending?.unload();
+    component?.unload();
+  };
+  return wrap;
+}
+
+class PikoBoard extends Plugin {
+  async onload() {
+    this.data = Object.assign({ drafts: {} }, await this.loadData());
+    this.data.drafts ||= {};
+    this.data.order ||= [];
+    this.dataSave = Promise.resolve();
+    this.queues = new Map();
+    this.modals = new Set();
+    this.noteCache = new Map();
+    this.journals = new Map();
+    this.disposed = false;
+    this.registerView(TYPE, (leaf) => new BoardView(leaf, this));
+    this.addCommand({
+      id: 'restore-message',
+      name: 'Восстановить удалённую запись',
+      callback: () => this.chooseDeletedMessage(),
+    });
+    this.addCommand({ id: 'open', name: 'Открыть доску дел', callback: () => this.openBoard() });
+    this.addCommand({
+      id: 'create',
+      name: 'Создать задачу',
+      callback: () => this.createTask('open'),
+    });
+    this.addRibbonIcon('columns-3', 'Дела', () => this.openBoard());
+    const refresh = (file) => {
+      if (file?.path) this.noteCache.delete(file.path);
+      clearTimeout(this.refreshTimer);
+      this.refreshTimer = setTimeout(() => this.refresh(), 200);
+    };
+    this.registerEvent(this.app.metadataCache.on('changed', refresh));
+    for (const ev of ['create', 'modify', 'delete'])
+      this.registerEvent(this.app.vault.on(ev, refresh));
+    this.registerEvent(
+      this.app.vault.on('rename', (file, old) => {
+        for (const entry of this.data.deletedUpdates || [])
+          if (entry.path === old) entry.path = file.path;
+        this.data.order = this.data.order.map((p) => (p === old ? file.path : p));
+        this.persist().catch(console.error);
+        if (this.data.drafts[old]) {
+          this.data.drafts[file.path] = this.data.drafts[old];
+          delete this.data.drafts[old];
+          this.persist().catch(console.error);
+        }
+        for (const leaf of this.app.workspace.getLeavesOfType(TYPE)) {
+          for (const key of ['recent', 'expanded'])
+            if (leaf.view[key]?.delete(old)) leaf.view[key].add(file.path);
+        }
+        this.noteCache.delete(old);
+        refresh(file);
+      }),
+    );
+    this.register(() => {
+      this.disposed = true;
+      clearTimeout(this.refreshTimer);
+    });
+    this.registerInterval(window.setInterval(() => this.refresh(), 60000));
+    this.app.workspace.onLayoutReady(() => this.refresh());
+  }
+  onunload() {
+    activeActionMenu?.close();
+    for (const modal of this.modals) modal.shutdown();
+    for (const model of this.journals.values()) model.save().catch(console.error);
+  }
+  persist() {
+    const snapshot = JSON.parse(JSON.stringify(this.data));
+    this.dataSave = this.dataSave.catch(() => {}).then(() => this.saveData(snapshot));
+    return this.dataSave;
+  }
+  draft(path) {
+    return this.data.drafts[path] || {};
+  }
+  setDraft(path, patch) {
+    const next = { ...this.draft(path), ...patch };
+    for (const key of Object.keys(next))
+      if (next[key] === undefined || next[key] === null) delete next[key];
+    if (Object.keys(next).length) this.data.drafts[path] = next;
+    else delete this.data.drafts[path];
+    return this.persist();
+  }
+  api() {
+    const a = this.app.plugins.getPlugin('tasknotes')?.api;
+    if (!a || a.apiVersion !== 1 || !a.hasCapability('tasks.write'))
+      throw new Error('Включите TaskNotes 4.13.8 или новее.');
+    return a;
+  }
+  tn() {
+    return this.app.plugins.getPlugin('tasknotes');
+  }
+  async openBoard() {
+    let leaf = this.app.workspace.getLeavesOfType(TYPE)[0];
+    if (!leaf) {
+      leaf = this.app.workspace.getLeaf('tab');
+      await leaf.setViewState({ type: TYPE, active: true });
+    }
+    await this.app.workspace.revealLeaf(leaf);
+  }
+  refresh() {
+    if (this.disposed) return;
+    for (const leaf of this.app.workspace.getLeavesOfType(TYPE))
+      leaf.view.refresh?.().catch(console.error);
+    for (const m of this.modals) m.syncExternal().catch(console.error);
+  }
+  queue(file, job) {
+    const prev = this.queues.get(file) || Promise.resolve();
+    const next = prev.catch(() => {}).then(job);
+    this.queues.set(file, next);
+    next
+      .finally(() => {
+        if (this.queues.get(file) === next) this.queues.delete(file);
+      })
+      .catch(() => {});
+    return next;
+  }
+  patch(file, patch) {
+    return this.queue(file, async () => {
+      const task = await this.api().tasks.update(file.path, patch, CONTEXT);
+      this.refresh();
+      return task;
+    });
+  }
+  async note(file) {
+    const mtime = file.stat.mtime,
+      cached = this.noteCache.get(file.path);
+    if (cached?.mtime === mtime) return cached.value;
+    const value = C.readNote(await this.app.vault.read(file));
+    if (file.stat.mtime === mtime) this.noteCache.set(file.path, { mtime, value });
+    return value;
+  }
+  writeBody(file, expected, next) {
+    return this.queue(file, async () => {
+      let result;
+      await this.app.vault.process(file, (text) => {
+        result = C.replaceBody(text, expected, next);
+        return result;
+      });
+      this.noteCache.delete(file.path);
+      this.refresh();
+      return C.readNote(result);
+    });
+  }
+  addUpdate(file, text, id = crypto.randomUUID()) {
+    return this.queue(file, async () => {
+      const update = { id, at: new Date().toISOString(), text };
+      await this.app.vault.process(file, (source) => C.appendUpdate(source, update));
+      this.noteCache.delete(file.path);
+      this.refresh();
+    });
+  }
+  journal(file) {
+    this.journals ||= new Map();
+    if (!this.journals.has(file)) this.journals.set(file, new JournalModel(this, file));
+    return this.journals.get(file);
+  }
+  setNext(file, expected, next) {
+    return this.queue(file, async () => {
+      await this.app.vault.process(file, (source) => C.setNextAction(source, expected, next));
+      this.noteCache.delete(file.path);
+      this.refresh();
+    });
+  }
+  toggleNextCheck(file, expected, line, checked) {
+    return this.queue(file, async () => {
+      let result;
+      await this.app.vault.process(file, (source) => {
+        result = C.setNextChecklistItem(source, expected, line, checked);
+        return result;
+      });
+      this.noteCache.delete(file.path);
+      this.refresh();
+      return C.readNote(result).nextAction;
+    });
+  }
+  completeNext(file, expected, update) {
+    return this.queue(file, async () => {
+      await this.app.vault.process(file, (source) =>
+        C.completeNextAction(source, expected, update),
+      );
+      this.noteCache.delete(file.path);
+      this.refresh();
+    });
+  }
+  mutateMessage(file, expected, change) {
+    return this.queue(file, async () => {
+      await this.app.vault.process(file, (source) => {
+        C.assertUpdate(source, expected);
+        return change(source);
+      });
+      this.noteCache.delete(file.path);
+      this.refresh();
+    });
+  }
+  editMessage(file, update, text) {
+    return this.mutateMessage(file, update, (source) => C.editUpdate(source, update.id, text));
+  }
+  async deleteMessage(file, update) {
+    const record = { id: crypto.randomUUID(), path: file.path, update: { ...update } };
+    await this.queue(file, async () => {
+      C.assertUpdate(await this.app.vault.read(file), update);
+      this.data.deletedUpdates ||= [];
+      this.data.deletedUpdates.push(record);
+      await this.persist();
+      await this.app.vault.process(file, (source) => {
+        C.assertUpdate(source, update);
+        return C.removeUpdate(source, update.id);
+      });
+      this.noteCache.delete(file.path);
+      this.refresh();
+    });
+    const fragment = document.createDocumentFragment();
+    el(fragment, 'span', '', 'Запись удалена. ');
+    const undo = el(fragment, 'button', 'pb-notice-undo', 'Восстановить');
+    undo.onclick = async () => {
+      undo.disabled = true;
+      try {
+        await this.restoreDeletedMessage(record);
+        notice.hide();
+      } catch (e) {
+        undo.disabled = false;
+        new Notice(errorMessage(e));
+      }
+    };
+    const notice = new Notice(fragment, 10000);
+  }
+  async restoreDeletedMessage(record) {
+    const file = this.app.vault.getAbstractFileByPath(record.path);
+    if (!(file instanceof TFile)) throw new Error('Сначала восстановите файл задачи из корзины.');
+    await this.queue(file, async () => {
+      await this.app.vault.process(file, (source) => {
+        if (C.readNote(source).updates.some((u) => u.id === record.update.id))
+          C.assertUpdate(source, record.update);
+        return C.appendUpdate(source, record.update);
+      });
+      this.data.deletedUpdates = (this.data.deletedUpdates || []).filter((x) => x.id !== record.id);
+      await this.persist();
+      this.noteCache.delete(file.path);
+      this.refresh();
+    });
+  }
+  chooseDeletedMessage() {
+    const items = (this.data.deletedUpdates || [])
+      .map((record) => ({
+        record,
+        label:
+          record.path.split('/').pop().replace(/\.md$/, '') +
+          ' · ' +
+          record.update.text.slice(0, 100),
+      }))
+      .reverse();
+    if (!items.length) {
+      new Notice('Нет удалённых записей');
+      return;
+    }
+    new PickModal(
+      this.app,
+      items,
+      async (item) => {
+        await this.restoreDeletedMessage(item.record);
+        new Notice('Запись восстановлена');
+      },
+      'Восстановить запись',
+    ).open();
+  }
+  async restoreStep(file, update) {
+    const expected = (await this.note(file)).nextAction || '';
+    if (expected && expected !== update.text) {
+      const yes = await new Promise((resolve) =>
+        new ConfirmMessageModal(
+          this.app,
+          'Заменить следующий шаг?',
+          expected + ' → ' + update.text,
+          'Заменить',
+          resolve,
+        ).open(),
+      );
+      if (!yes) return;
+    }
+    await this.mutateMessage(file, update, (source) =>
+      C.restoreCompletedAction(source, update, expected),
+    );
+    this.journal(file).syncNext(update.text);
+  }
+  messageActions(file, update, rendered) {
+    const items = [
+      {
+        label: 'Копировать',
+        icon: 'copy',
+        action: async () => {
+          await navigator.clipboard.writeText(
+            rendered.innerText || rendered.textContent || update.text,
+          );
+          new Notice('Скопировано', 1500);
+        },
+      },
+      {
+        label: 'Изменить',
+        icon: 'pencil',
+        action: () =>
+          new EditMessageModal(this.app, update, (text) =>
+            this.editMessage(file, update, text),
+          ).open(),
+      },
+    ];
+    if (update.kind === 'done')
+      items.push({
+        label: 'Вернуть в следующий шаг',
+        icon: 'undo-2',
+        action: () => this.restoreStep(file, update),
+      });
+    items.push(
+      { separator: true },
+      {
+        label: 'Удалить запись',
+        icon: 'trash-2',
+        danger: true,
+        action: async () => {
+          const yes = await new Promise((resolve) =>
+            new ConfirmMessageModal(
+              this.app,
+              'Удалить запись?',
+              update.text,
+              'Удалить',
+              resolve,
+              true,
+            ).open(),
+          );
+          if (yes) await this.deleteMessage(file, update);
+        },
+      },
+    );
+    return items;
+  }
+  messageMenu(event, file, update, rendered, anchor) {
+    event.preventDefault();
+    event.stopPropagation();
+    return actionMenu(
+      anchor,
+      this.messageActions(file, update, rendered),
+      'Действия с записью',
+      this.app,
+    );
+  }
+
+  uploadMaterial(callback) {
+    return new Promise((resolve, reject) => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.multiple = true;
+      input.oncancel = () => resolve();
+      input.onchange = async () => {
+        try {
+          await this.ensureFolder('Вложения');
+          for (const f of input.files) {
+            const safe = f.name.replace(/[\\/:*?"<>|]/g, '_');
+            let path = normalizePath('Вложения/' + safe),
+              n = 2;
+            const dot = safe.lastIndexOf('.');
+            while (this.app.vault.getAbstractFileByPath(path))
+              path = normalizePath(
+                'Вложения/' +
+                  (dot > 0 ? safe.slice(0, dot) : safe) +
+                  ' ' +
+                  n++ +
+                  (dot > 0 ? safe.slice(dot) : ''),
+              );
+            await callback(await this.app.vault.createBinary(path, await f.arrayBuffer()));
+          }
+          resolve();
+        } catch (e) {
+          reject(e);
+        }
+      };
+      input.click();
+    });
+  }
+  async tasks() {
+    const settings = this.tn().settings;
+    const system = new Set([settings.taskTag, settings.fieldMapping?.archiveTag || 'archived']);
+    return (await this.api().tasks.list()).map((t) => ({
+      ...t,
+      projects: (t.projects || []).map((p) => {
+        const f = this.app.metadataCache.getFirstLinkpathDest(C.linkTarget(p), t.path);
+        return f ? '[[' + f.path.replace(/\.md$/, '') + ']]' : p;
+      }),
+      visibleTags: C.tagList(t.tags).filter((t) => !system.has(t)),
+    }));
+  }
+  projects() {
+    return this.app.vault
+      .getMarkdownFiles()
+      .filter((f) => this.app.metadataCache.getFileCache(f)?.frontmatter?.type === 'project')
+      .map((f) => ({ label: f.basename, value: f.path.replace(/\.md$/, '') }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'ru'));
+  }
+  async ensureFolder(path) {
+    let part = '';
+    for (const name of path.split('/').filter(Boolean)) {
+      part = part ? part + '/' + name : name;
+      if (!this.app.vault.getAbstractFileByPath(part)) await this.app.vault.createFolder(part);
+    }
+  }
+  async uniqueNote(folder, title, content) {
+    await this.ensureFolder(folder);
+    let safe = title
+      .replace(/[\\/:*?"<>|\[\]#^]/g, ' ')
+      .trim()
+      .slice(0, 140);
+    if (!safe || /^\.+$/.test(safe)) safe = 'Заметка';
+    let path = normalizePath(folder + '/' + safe + '.md'),
+      n = 2;
+    while (this.app.vault.getAbstractFileByPath(path))
+      path = normalizePath(folder + '/' + safe + ' ' + n++ + '.md');
+    return this.app.vault.create(path, content);
+  }
+  async createTask(status = 'open', view) {
+    if (!view) {
+      await this.openBoard();
+      view = this.app.workspace.getLeavesOfType(TYPE)[0]?.view;
+    }
+    if (view?.beginCreate) view.beginCreate(status);
+  }
+  async requestTrash(file) {
+    const confirmed = await new Promise((resolve) =>
+      new DeleteConfirmModal(this.app, file.basename, resolve).open(),
+    );
+    return confirmed ? this.trashTask(file) : false;
+  }
+  async trashTask(file) {
+    for (const modal of [...this.modals])
+      if (modal.file === file && !(await modal.close())) return false;
+    await this.queue(file, () => this.app.vault.trash(file, false));
+    const journal = this.journals?.get(file);
+    if (journal) journal.deleted = true;
+    this.journals?.delete(file);
+    delete this.data.drafts[file.path];
+    await this.persist();
+    this.noteCache.delete(file.path);
+    this.refresh();
+    new Notice('Задача перемещена в корзину хранилища');
+    return true;
+  }
+  async submitTask(title, status, view) {
+    const task = await this.api().tasks.create(
+      {
+        title,
+        status,
+        projects:
+          view?.mode !== 'focus' && view?.filters.project && view.filters.project !== '__none__'
+            ? ['[[' + view.filters.project + ']]']
+            : [],
+        tags: [],
+        details: '',
+      },
+      CONTEXT,
+    );
+    this.data.order = C.moveTaskOrder(
+      C.orderedTasks(await this.tasks(), this.data.order).map((t) => t.path),
+      task.path,
+    );
+    await this.persist();
+    view?.recent.add(task.path);
+    if (view) {
+      await view.refresh();
+      view.revealNew(task.path);
+    }
+    this.refresh();
+    return this.app.vault.getAbstractFileByPath(task.path);
+  }
+  chooseProject(callback) {
+    new PickModal(
+      this.app,
+      [
+        { label: 'Без проекта', value: '' },
+        ...this.projects(),
+        { label: '+ Новый проект', create: true },
+      ],
+      async (i) => {
+        if (i.create)
+          new AskModal(this.app, 'Проект', 'Название проекта', async (title) => {
+            const safe = title.replace(/[\\/:*?"<>|\[\]#^]/g, ' ').trim();
+            if (!safe || /^\.+$/.test(safe)) throw new Error('Введите название проекта');
+            const f = await this.uniqueNote('Проекты/' + safe, safe, '---\ntype: project\n---\n\n');
+            await callback('[[' + f.path.replace(/\.md$/, '') + ']]');
+          }).open();
+        else await callback(i.value ? '[[' + i.value + ']]' : '');
+      },
+      'Проект',
+    ).open();
+  }
+  chooseNote(source, callback) {
+    const items = this.app.vault
+      .getFiles()
+      .filter((f) => f.path !== source.path)
+      .map((f) => ({ label: f.basename + ' · ' + (f.parent?.path || ''), file: f }));
+    items.unshift({ label: '+ Новое исследование', create: true });
+    new PickModal(
+      this.app,
+      items,
+      async (i) => {
+        if (i.create)
+          new AskModal(this.app, 'Исследование', 'Название', async (title) =>
+            callback(await this.uniqueNote('Материалы', title, '')),
+          ).open();
+        else await callback(i.file);
+      },
+      'Материалы',
+    ).open();
+  }
+  openFile(file) {
+    this.app.workspace.getLeaf('tab').openFile(file);
+  }
+  disposeHistory(container) {
+    container._seq = (container._seq || 0) + 1;
+    container._component?.unload();
+    container._component = null;
+    container._pendingComponent?.unload();
+    container._pendingComponent = null;
+  }
+  async history(container, file, owner) {
+    const seq = (container._seq || 0) + 1;
+    container._seq = seq;
+    const { updates, nextAction } = await this.note(file);
+    if (seq !== container._seq || !container.isConnected) return;
+    this.journal(file).syncNext(nextAction || '');
+    const signature = JSON.stringify([updates, new Date().toDateString()]);
+    if (container._signature === signature) return;
+    const scroll = container.scrollTop,
+      stage = document.createElement('div');
+    container._pendingComponent?.unload();
+    const component = new Component();
+    component.load();
+    container._pendingComponent = component;
+    let committed = false;
+    try {
+      let previous = '';
+      for (const u of updates) {
+        if (seq !== container._seq) return;
+        const date = new Date(u.at),
+          group = date.toDateString();
+        if (group !== previous) {
+          el(el(stage, 'div', 'pb-day'), 'span', '', C.dayLabel(date));
+          previous = group;
+        }
+        const message = el(stage, 'div', 'pb-message');
+        if (u.kind === 'done') el(message, 'span', 'pb-message-kind', 'Сделано');
+        const text = el(message, 'div', 'pb-message-text markdown-rendered');
+        await MarkdownRenderer.render(this.app, u.text, text, file.path, component);
+        if (seq !== container._seq) return;
+        text.querySelectorAll('a.internal-link').forEach(
+          (a) =>
+            (a.onclick = (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              this.app.workspace.openLinkText(
+                a.dataset.href || a.getAttribute('href'),
+                file.path,
+                true,
+              );
+            }),
+        );
+        text.querySelectorAll('input[type=checkbox]').forEach((box) => {
+          box.disabled = true;
+        });
+        const footer = el(message, 'div', 'pb-message-footer');
+        const time = el(
+          footer,
+          'time',
+          '',
+          date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+        );
+        time.dateTime = u.at;
+        time.setAttribute('aria-label', date.toLocaleString('ru-RU'));
+        const menuButton = icon(footer, 'ellipsis', 'Действия с записью', (e) =>
+          this.messageMenu(e, file, u, text, menuButton),
+        );
+        menuButton.classList.add('pb-message-menu');
+        menuButton.setAttribute('aria-haspopup', 'menu');
+        menuButton.setAttribute('aria-expanded', 'false');
+        message.oncontextmenu = (e) => this.messageMenu(e, file, u, text, menuButton);
+      }
+      if (seq !== container._seq || !container.isConnected) return;
+      container._component?.unload();
+      container._component = component;
+      container.replaceChildren(...stage.childNodes);
+      container.classList.toggle('pb-empty-feed', !updates.length);
+      container._signature = signature;
+      container.scrollTop = scroll;
+      committed = true;
+    } finally {
+      if (!committed) component.unload();
+      if (container._pendingComponent === component) container._pendingComponent = null;
+    }
+  }
+}
+class BoardView extends ItemView {
+  constructor(leaf, plugin) {
+    super(leaf);
+    this.plugin = plugin;
+    this.filters = { project: '', tags: [] };
+    this.expanded = new Set();
+    this.recent = new Set();
+    this.cards = new Map();
+    this.archive = false;
+    this.mode = 'board';
+    this.seq = 0;
+    this.dragPath = null;
+    this.moving = false;
+  }
+  getViewType() {
+    return TYPE;
+  }
+  getDisplayText() {
+    return 'Дела';
+  }
+  getIcon() {
+    return 'columns-3';
+  }
+  getState() {
+    return { filters: this.filters, archive: this.archive, mode: this.mode };
+  }
+  async setState(state, result) {
+    if (state?.filters)
+      this.filters = { project: state.filters.project || '', tags: state.filters.tags || [] };
+    this.archive = !!state?.archive;
+    this.mode = ['board', 'overview', 'focus'].includes(state?.mode) ? state.mode : 'board';
+    await super.setState(state, result);
+    if (this.root) await this.refresh();
+  }
+  async onOpen() {
+    this.contentEl.empty();
+    this.root = el(this.contentEl, 'div', 'personal-board');
+    this.toolbar = el(this.root, 'div', 'pb-toolbar');
+    this.domains = el(this.root, 'div', 'pb-domains');
+    this.area = el(this.root, 'div', 'pb-board');
+    this.registerDomEvent(
+      this.root.ownerDocument,
+      'click',
+      (e) => {
+        for (const col of this.columns?.values() || []) {
+          if (
+            col.createRow &&
+            !col.createRow.contains(e.target) &&
+            !col.createInput.value.trim() &&
+            !col.createRow._busy
+          ) {
+            col.createRow.hidden = true;
+            col.col.querySelector('.pb-add-task').hidden = false;
+          }
+        }
+      },
+      true,
+    );
+    await this.refresh();
+  }
+  async onClose() {
+    this.seq++;
+    for (const c of this.cards.values()) this.disposeCard(c);
+    this.toolbar?.querySelectorAll('.pb-picker-wrap').forEach((w) => w._dispose?.());
+  }
+  beginCreate(status = 'open') {
+    if (this.archive) {
+      this.archive = false;
+      this.mode = 'board';
+      this.refresh().then(() => this.beginCreate(status));
+      return;
+    }
+    const col = this.columns?.get(status);
+    if (!col) return;
+    if (col.createInput) {
+      col.createRow.hidden = false;
+      col.col.querySelector('.pb-add-task').hidden = true;
+      col.createRow.scrollIntoView({ block: 'nearest' });
+      col.createInput.focus();
+      return;
+    }
+    const row = el(col.col, 'form', 'pb-create-row');
+    col.col.insertBefore(row, col.list);
+    col.createRow = row;
+    const input = el(row, 'textarea', 'pb-create-input');
+    col.createInput = input;
+    input.rows = 1;
+    input.placeholder =
+      'Новая задача · ' + (statuses.find((s) => s.value === status)?.label || status);
+    input.setAttribute('aria-label', 'Новая задача');
+    const add = col.col.querySelector('.pb-add-task');
+    add.hidden = true;
+    const hide = () => {
+      row.hidden = true;
+      add.hidden = false;
+    };
+    row.onfocusout = () =>
+      setTimeout(() => {
+        if (!row.contains(document.activeElement) && !input.value.trim() && !row._busy) hide();
+      }, 0);
+    const send = icon(row, 'arrow-up', 'Создать задачу', () => row.requestSubmit());
+    send.classList.add('pb-create-send');
+    send.hidden = true;
+    input.oninput = () => {
+      send.hidden = !input.value.trim();
+      grow(input, 36, 120);
+    };
+    input.onkeydown = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        hide();
+        add.focus();
+      }
+      if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+        e.preventDefault();
+        row._openTask = e.metaKey || e.ctrlKey;
+        row.requestSubmit();
+      }
+    };
+    row.onsubmit = async (e) => {
+      e.preventDefault();
+      const title = input.value.trim();
+      if (!title || row._busy) return;
+      row._busy = true;
+      send.disabled = true;
+      input.readOnly = true;
+      const open = row._openTask;
+      row._openTask = false;
+      try {
+        const f = await this.plugin.submitTask(title, status, this);
+        input.value = '';
+        send.hidden = true;
+        grow(input, 36, 120);
+        if (open && f instanceof TFile) {
+          hide();
+          new TaskModal(this.plugin, f).open();
+        } else if (row.contains(document.activeElement)) input.focus();
+        else hide();
+      } catch (err) {
+        new Notice(errorMessage(err));
+        input.focus();
+      } finally {
+        row._busy = false;
+        input.readOnly = false;
+        send.disabled = false;
+      }
+    };
+    row.scrollIntoView({ block: 'nearest' });
+    input.focus();
+  }
+  changed() {
+    this.recent.clear();
+    this.app.workspace.requestSaveLayout();
+    this.refresh();
+  }
+  switchMode(mode) {
+    this.archive = mode === 'archive';
+    this.mode = this.archive ? 'board' : mode;
+    this.changed();
+  }
+  disposeCard(card) {
+    card.composer?.dispose();
+    card.nextWrap?._dispose?.();
+    this.plugin.disposeHistory(card.feed);
+    card.node.remove();
+  }
+  async refresh() {
+    if (!this.root?.isConnected || this.dragPath || this.moving) return;
+    const seq = ++this.seq;
+    let tasks;
+    try {
+      tasks = await this.plugin.tasks();
+    } catch (e) {
+      if (seq === this.seq && !this.cards.size) {
+        this.area.replaceChildren();
+        this.layoutMode = null;
+        this.columns = null;
+        this.overviewSignature = null;
+        el(this.area, 'p', 'pb-error', errorMessage(e));
+      }
+      return;
+    }
+    if (seq !== this.seq) return;
+    tasks = C.orderedTasks(tasks, this.plugin.data.order);
+    this.allTasks = tasks;
+    this.renderToolbar();
+    const focus = this.mode === 'focus' && !this.archive;
+    const completed = new Set(
+      this.plugin
+        .api()
+        .catalog.statuses()
+        .filter((s) => s.isCompleted)
+        .map((s) => s.value),
+    );
+    const visible = tasks.filter(
+      (t) =>
+        !!t.archived === this.archive &&
+        (focus
+          ? t.status === 'in-progress'
+          : C.taskMatches(t, this.filters) || this.recent.has(t.path)),
+    );
+    const layout = this.archive ? 'archive' : this.mode;
+    if (this.layoutMode !== layout) {
+      for (const c of this.cards.values()) this.disposeCard(c);
+      this.cards.clear();
+      this.columns = null;
+      this.layoutMode = layout;
+      this.area.replaceChildren();
+      this.area.className =
+        'pb-board' +
+        (this.archive
+          ? ' pb-archive'
+          : focus
+            ? ' pb-focus'
+            : this.mode === 'overview'
+              ? ' pb-overview'
+              : '');
+    }
+    if (!this.columns) {
+      this.columns = new Map();
+      const columns = this.archive
+        ? [{ value: 'archive', label: 'Архив', cls: 'plan' }]
+        : focus
+          ? [statuses[1]]
+          : statuses;
+      for (const s of columns) {
+        const col = el(this.area, 'section', 'pb-column pb-' + s.cls),
+          header = el(col, 'header', 'pb-column-header');
+        if (s.icon) {
+          const mark = el(header, 'span', 'pb-status-icon');
+          setIcon(mark, s.icon);
+          mark.setAttribute('aria-hidden', 'true');
+        }
+        el(header, 'span', '', focus ? 'В работе · все домены' : s.label);
+        const count = el(header, 'small'),
+          list = el(col, 'div', 'pb-card-list');
+        this.columns.set(s.value, { col, count, list });
+        if (!this.archive)
+          button(col, '+ Задача', () => this.plugin.createTask(s.value, this), 'pb-add-task');
+      }
+    }
+    const visiblePaths = new Set(visible.map((t) => t.path));
+    for (const [path, c] of this.cards)
+      if (!visiblePaths.has(path)) {
+        this.disposeCard(c);
+        this.cards.delete(path);
+      }
+    for (const [key, col] of this.columns) {
+      const list = visible.filter(
+        (t) =>
+          key === 'archive' ||
+          (key === 'done'
+            ? completed.has(t.status)
+            : key === 'in-progress'
+              ? t.status === 'in-progress'
+              : !completed.has(t.status) && t.status !== 'in-progress'),
+      );
+      col.count.textContent = String(list.length);
+      let index = 0;
+      for (const task of list) {
+        if (seq !== this.seq) return;
+        let card = this.cards.get(task.path);
+        if (!card) {
+          card = this.makeCard(task);
+          if (!card) continue;
+          this.cards.set(task.path, card);
+        }
+        card.task = task;
+        this.updateCard(card);
+        const at = col.list.children[index++];
+        if (at !== card.node) col.list.insertBefore(card.node, at || null);
+        const note = await this.plugin.note(card.file);
+        if (seq !== this.seq) return;
+        this.plugin.journal(card.file).syncNext(note.nextAction || '');
+        if (!card.journal.hidden) await this.plugin.history(card.feed, card.file, this);
+      }
+    }
+  }
+
+  renderToolbar() {
+    const active = this.allTasks.filter((t) => !t.archived),
+      focus = this.mode === 'focus' && !this.archive;
+    const signature = JSON.stringify([
+      this.mode,
+      this.archive,
+      this.filters,
+      this.plugin.projects(),
+      this.allTasks.map((t) => [t.projects, t.visibleTags, t.status, t.archived]),
+    ]);
+    if (this.toolbarSignature === signature) return;
+    this.toolbarSignature = signature;
+    this.toolbar.querySelectorAll('.pb-picker-wrap').forEach((w) => w._dispose?.());
+    this.toolbar.replaceChildren();
+    this.domains.replaceChildren();
+    const nav = el(this.toolbar, 'div', 'pb-nav');
+    for (const [mode, label] of [
+      ['board', 'Доска'],
+      ['overview', 'Компактно'],
+      ['focus', 'В работе · ' + active.filter((t) => t.status === 'in-progress').length],
+      ['archive', 'Архив'],
+    ]) {
+      const selected = mode === 'archive' ? this.archive : !this.archive && this.mode === mode;
+      const b = button(nav, label, () => this.switchMode(mode), selected ? 'is-active' : '');
+      b.setAttribute('aria-pressed', String(selected));
+    }
+    if (!focus) {
+      const filters = el(this.toolbar, 'div', 'pb-filters');
+      const tags = [...new Set(this.allTasks.flatMap((t) => t.visibleTags))].sort();
+      picker(
+        filters,
+        this.filters.tags.length
+          ? this.filters.tags.map((t) => (t === '__none__' ? 'Без тегов' : '#' + t)).join(', ')
+          : 'Все теги',
+        'Фильтр по тегам',
+        [
+          { value: '', label: 'Все теги', selected: !this.filters.tags.length },
+          ...['__none__', ...tags].map((t) => ({
+            value: t,
+            label: t === '__none__' ? 'Без тегов' : '#' + t,
+            selected: this.filters.tags.includes(t),
+          })),
+        ],
+        (i) => {
+          const t = i.value;
+          this.filters.tags = !t
+            ? []
+            : this.filters.tags.includes(t)
+              ? this.filters.tags.filter((x) => x !== t)
+              : t === '__none__'
+                ? ['__none__']
+                : [...this.filters.tags.filter((x) => x !== '__none__'), t];
+          this.changed();
+        },
+        'pb-filter',
+      );
+      if (this.filters.tags.length)
+        icon(filters, 'x', 'Сбросить теги', () => {
+          this.filters.tags = [];
+          this.changed();
+        });
+    }
+    button(
+      this.toolbar,
+      '+ Задача',
+      () => this.plugin.createTask(focus ? 'in-progress' : 'open', this),
+      'pb-new',
+    );
+    this.domains.hidden = focus;
+    if (focus) return;
+    const options = new Map(this.plugin.projects().map((p) => [p.value, p.label]));
+    for (const t of this.allTasks)
+      for (const p of t.projects) options.set(C.linkTarget(p), fileTitle(p));
+    const scope = this.allTasks.filter((t) => !!t.archived === this.archive);
+    const choices = [
+      {
+        value: '',
+        label: focus ? 'Все домены' : 'Все',
+        count: focus ? active.filter((t) => t.status === 'in-progress').length : scope.length,
+      },
+      ...[...options].map(([value, label]) => ({
+        value,
+        label,
+        count: scope.filter((t) => C.linkTarget(t.projects[0] || '') === value).length,
+      })),
+      {
+        value: '__none__',
+        label: 'Без проекта',
+        count: scope.filter((t) => !t.projects.length).length,
+      },
+    ];
+    for (const choice of choices) {
+      if (this.archive && choice.value && choice.count === 0) continue;
+      const selected = focus ? !choice.value : this.filters.project === choice.value;
+      const b = button(
+        this.domains,
+        '',
+        () => {
+          if (focus) {
+            this.mode = 'board';
+            this.filters.tags = [];
+          }
+          this.filters.project = choice.value;
+          this.changed();
+        },
+        'pb-domain' + (selected ? ' is-active' : ''),
+      );
+      el(b, 'span', '', choice.label);
+      el(b, 'small', 'pb-domain-count', String(choice.count));
+      b.setAttribute('aria-pressed', String(selected));
+    }
+  }
+  makeCard(task) {
+    const file = this.app.vault.getAbstractFileByPath(task.path);
+    if (!(file instanceof TFile)) return null;
+    const node = document.createElement('article');
+    node.className = 'pb-task';
+    node.dataset.path = file.path;
+    const head = el(node, 'div', 'pb-task-head');
+    const c = { node, head, file, task };
+    const grip = el(head, 'span', 'pb-grip');
+    setIcon(grip, 'grip-vertical');
+    grip.setAttribute('aria-hidden', 'true');
+    c.title = button(
+      head,
+      task.title || file.basename,
+      () => new TaskModal(this.plugin, file).open(),
+      'pb-task-title',
+    );
+    c.toggle = icon(head, 'chevron-down', 'История', async () => {
+      const open = !this.expanded.has(file.path);
+      if (open) this.expanded.add(file.path);
+      else this.expanded.delete(file.path);
+      c.journal.hidden = !open;
+      c.toggle.setAttribute('aria-expanded', String(open));
+      if (open) await this.plugin.history(c.feed, file, this);
+    });
+    c.toggle.classList.add('pb-history-toggle');
+    c.toggle.setAttribute('aria-expanded', String(this.expanded.has(file.path)));
+    head.draggable = false;
+    head.onpointerdown = (e) => {
+      if (this.archive || e.button !== 0 || e.target.closest('.pb-history-toggle')) return;
+      const start = { x: e.clientX, y: e.clientY };
+      let dragging = false,
+        target = null;
+      const move = (ev) => {
+        if (!dragging && Math.hypot(ev.clientX - start.x, ev.clientY - start.y) < 5) return;
+        if (!dragging) {
+          dragging = true;
+          this.dragPath = file.path;
+          head.setPointerCapture(e.pointerId);
+          node.classList.add('pb-dragging');
+        }
+        ev.preventDefault();
+        this.clearDrop();
+        target = null;
+        for (const [status, col] of this.columns) {
+          const r = col.col.getBoundingClientRect();
+          if (
+            ev.clientX >= r.left &&
+            ev.clientX <= r.right &&
+            ev.clientY >= r.top &&
+            ev.clientY <= r.bottom
+          ) {
+            target = { status, ...this.dropTarget(col.list, ev.clientY, ev.clientX) };
+            col.col.classList.add('pb-drop');
+            if (target.node)
+              target.node.classList.add(target.after ? 'pb-insert-after' : 'pb-insert-before');
+            break;
+          }
+        }
+      };
+      const end = (ev) => {
+        head.ownerDocument.removeEventListener('pointermove', move);
+        head.ownerDocument.removeEventListener('pointerup', end);
+        head.ownerDocument.removeEventListener('pointercancel', end);
+        if (!dragging) return;
+        this.suppressClickUntil = Date.now() + 350;
+        this.dragPath = null;
+        node.classList.remove('pb-dragging');
+        this.clearDrop();
+        if (head.hasPointerCapture(e.pointerId)) head.releasePointerCapture(e.pointerId);
+        if (target && ev.type === 'pointerup')
+          this.moveCard(file.path, target.status, target.anchor, target.after);
+        else this.refresh();
+      };
+      head.ownerDocument.addEventListener('pointermove', move);
+      head.ownerDocument.addEventListener('pointerup', end);
+      head.ownerDocument.addEventListener('pointercancel', end);
+    };
+    head.addEventListener(
+      'click',
+      (e) => {
+        if (Date.now() < (this.suppressClickUntil || 0)) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      },
+      true,
+    );
+    node.oncontextmenu = (e) => {
+      if (e.target.closest('.pb-card-journal')) return;
+      e.preventDefault();
+      const menu = new Menu();
+      for (const s of statuses)
+        menu.addItem((i) =>
+          i
+            .setTitle(s.label)
+            .setIcon(s.icon)
+            .setChecked(c.task.status === s.value)
+            .onClick(() =>
+              this.plugin
+                .patch(file, { status: s.value })
+                .catch((err) => new Notice(errorMessage(err))),
+            ),
+        );
+      menu.addSeparator();
+      menu.addItem((i) =>
+        i.setTitle(c.task.archived ? 'Вернуть' : 'В архив').onClick(() => this.archiveTask(c)),
+      );
+      menu.addItem((i) => i.setTitle('Открыть файл').onClick(() => this.plugin.openFile(file)));
+      menu.addSeparator();
+      menu.addItem((i) =>
+        i
+          .setTitle('Удалить задачу')
+          .setIcon('trash-2')
+          .onClick(() =>
+            this.plugin.requestTrash(file).catch((err) => new Notice(errorMessage(err))),
+          ),
+      );
+      menu.showAtMouseEvent(e);
+    };
+    c.meta = el(node, 'div', 'pb-meta');
+    if (this.archive) button(node, 'Вернуть', () => this.archiveTask(c), 'pb-restore');
+    c.nextWrap = nextStep(node, this.plugin, file, async () => {
+      this.expanded.add(file.path);
+      c.journal.hidden = false;
+      c.toggle.setAttribute('aria-expanded', 'true');
+      await c.composer.setMode('next');
+      await this.plugin.history(c.feed, file, this);
+    });
+    c.journal = el(node, 'div', 'pb-card-journal');
+    c.journal.hidden = !this.expanded.has(file.path);
+    c.feed = el(c.journal, 'div', 'pb-feed');
+    c.feed.setAttribute('role', 'region');
+    c.feed.setAttribute('aria-label', 'История задачи');
+    c.composer = new JournalComposer(this.plugin, file, c.journal);
+    return c;
+  }
+  clearDrop() {
+    this.area
+      .querySelectorAll('.pb-drop,.pb-insert-before,.pb-insert-after')
+      .forEach((n) => n.classList.remove('pb-drop', 'pb-insert-before', 'pb-insert-after'));
+  }
+  dropTarget(list, y, x) {
+    const nodes = [...list.children].filter((n) => n.dataset.path !== this.dragPath);
+    if (this.mode === 'focus' && Number.isFinite(x)) {
+      let node = null,
+        distance = Infinity;
+      for (const n of nodes) {
+        const r = n.getBoundingClientRect(),
+          dx = Math.max(r.left - x, 0, x - r.right),
+          dy = Math.max(r.top - y, 0, y - r.bottom),
+          d = dx * dx + dy * dy;
+        if (d < distance) {
+          node = n;
+          distance = d;
+        }
+      }
+      const r = node?.getBoundingClientRect();
+      return {
+        node,
+        anchor: node?.dataset.path || null,
+        after: !!r && (y > r.bottom || (y >= r.top && x > r.left + r.width / 2)),
+      };
+    }
+    const before = nodes.find((n) => {
+      const r = n.getBoundingClientRect();
+      return y < r.top + r.height / 2;
+    });
+    const node = before || nodes.at(-1);
+    return { node, anchor: node?.dataset.path || null, after: !!node && !before };
+  }
+  async moveCard(path, status, anchor, after) {
+    if (this.moving) return;
+    const file = this.app.vault.getAbstractFileByPath(path);
+    if (!(file instanceof TFile)) return;
+    this.moving = true;
+    try {
+      const task = this.allTasks.find((t) => t.path === path);
+      if (task?.status !== status) await this.plugin.patch(file, { status });
+      const old = this.plugin.data.order;
+      this.plugin.data.order = C.moveTaskOrder(
+        C.orderedTasks(await this.plugin.tasks(), old).map((t) => t.path),
+        path,
+        anchor,
+        after,
+      );
+      try {
+        await this.plugin.persist();
+      } catch (e) {
+        this.plugin.data.order = old;
+        throw e;
+      }
+    } catch (e) {
+      new Notice(errorMessage(e));
+    } finally {
+      this.moving = false;
+      await this.refresh();
+      this.plugin.refresh();
+    }
+  }
+  revealNew(path) {
+    const card = this.cards.get(path);
+    if (!card) return;
+    card.node.classList.add('pb-new-task');
+    card.node.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    const timer = setTimeout(() => card.node.classList.remove('pb-new-task'), 6500);
+    this.register(() => clearTimeout(timer));
+  }
+  async archiveTask(c) {
+    try {
+      await this.plugin.api().tasks.archive(c.file.path, !c.task.archived, CONTEXT);
+      this.plugin.refresh();
+    } catch (e) {
+      new Notice(errorMessage(e));
+    }
+  }
+  updateCard(c) {
+    const t = c.task;
+    c.title.textContent = t.title || c.file.basename;
+    const matches = (this.mode === 'focus' && !this.archive) || C.taskMatches(t, this.filters);
+    const signature = JSON.stringify([t.projects, t.visibleTags, t.due, matches]);
+    if (c.metaSignature === signature) return;
+    c.metaSignature = signature;
+    c.meta.replaceChildren();
+    for (const p of t.projects)
+      el(
+        c.meta,
+        'span',
+        'pb-badge pb-project pb-color-' + C.colorFor(C.linkTarget(p)),
+        fileTitle(p),
+      );
+    for (const tag of t.visibleTags) el(c.meta, 'span', 'pb-badge', '#' + tag);
+    if (t.due) el(c.meta, 'span', 'pb-badge pb-due', dateText(t.due));
+    if (!matches) el(c.meta, 'span', 'pb-badge', 'Вне фильтра');
+    c.meta.hidden = !c.meta.children.length;
+  }
+}
+class TaskModal extends Modal {
+  constructor(plugin, file) {
+    super(plugin.app);
+    this.plugin = plugin;
+    this.file = file;
+    this.closed = false;
+    this.renderSeq = 0;
+    this.renderComponent = new Component();
+    this.renderComponent.load();
+    this.propertySave = Promise.resolve();
+  }
+  async onOpen() {
+    this.plugin.modals.add(this);
+    this.modalEl.addClass('pb-task-modal');
+    this.contentEl.addClass('personal-board');
+    try {
+      this.task = await this.plugin.api().tasks.get(this.file.path);
+      if (!this.task) throw new Error('Задача не найдена');
+      const note = await this.plugin.note(this.file);
+      if (this.closed) return;
+      let draft = this.plugin.draft(this.file.path);
+      if (draft.body !== undefined && draft.body.trimEnd() === note.body.trimEnd()) {
+        await this.plugin.setDraft(this.file.path, { body: undefined, bodyBase: undefined });
+        draft = this.plugin.draft(this.file.path);
+      }
+      this.session = new C.BodySession(
+        draft.body !== undefined ? (draft.bodyBase ?? note.body) : note.body,
+        (expected, next) => this.plugin.writeBody(this.file, expected, next),
+      );
+      if (draft.body !== undefined) this.session.set(draft.body);
+      this.build(draft.update || '');
+      if (draft.body !== undefined && note.body.trimEnd() !== this.session.baseline.trimEnd())
+        this.fail(new Error('BODY_CONFLICT'));
+    } catch (e) {
+      new Notice(errorMessage(e));
+      super.close();
+    }
+  }
+  build(update) {
+    this.contentEl.empty();
+    const top = el(this.contentEl, 'div', 'pb-modal-top');
+    this.titleInput = el(top, 'textarea', 'pb-title-input');
+    this.titleInput.rows = 1;
+    this.titleInput.value = this.task.title || this.file.basename;
+    this.titleInput.setAttribute('aria-label', 'Название задачи');
+    this.titleInput.oninput = () => grow(this.titleInput, 32, 130);
+    this.titleInput.onchange = () => this.commitTitle();
+    this.titleInput.onkeydown = (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        this.titleInput.blur();
+      }
+    };
+    const actions = el(top, 'div', 'pb-actions');
+    icon(actions, 'trash-2', 'Удалить задачу', () =>
+      this.plugin.requestTrash(this.file).catch((e) => this.fail(e)),
+    ).classList.add('pb-trash');
+    icon(actions, 'ellipsis', 'Действия', (e) => {
+      const menu = new Menu();
+      menu.addItem((i) =>
+        i.setTitle('Открыть файл').onClick(async () => {
+          if (await this.close()) this.plugin.openFile(this.file);
+        }),
+      );
+      menu.addItem((i) =>
+        i.setTitle(this.task.archived ? 'Вернуть' : 'В архив').onClick(async () => {
+          if (!(await this.flushSafe())) return;
+          try {
+            await this.plugin.api().tasks.archive(this.file.path, !this.task.archived, CONTEXT);
+            this.plugin.refresh();
+            await this.close();
+          } catch (err) {
+            this.fail(err);
+          }
+        }),
+      );
+      menu.showAtMouseEvent(e);
+    });
+    this.props = el(this.contentEl, 'div', 'pb-props');
+    this.renderProps();
+    this.bodyWrap = el(this.contentEl, 'div', 'pb-body-wrap');
+    this.previewEl = el(this.bodyWrap, 'div', 'pb-body-preview markdown-rendered');
+    this.editor = el(this.bodyWrap, 'textarea', 'pb-body-editor');
+    this.editor.rows = 2;
+    this.editor.hidden = false;
+    this.editor.value = this.session.value.trim() ? this.session.value : '';
+    this.previewEl.hidden = true;
+    this.editor.placeholder = 'Описание';
+    this.editor.setAttribute('aria-label', 'Описание');
+    this.editor.oninput = () => this.inputBody();
+    this.editor.onblur = () => this.finishEdit();
+    this.editor.onkeydown = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+        e.preventDefault();
+        this.editor.blur();
+      }
+    };
+    this.mountRichEditor();
+    const tools = el(this.bodyWrap, 'div', 'pb-body-tools');
+    this.bodyTools = tools;
+    const checklist = button(tools, '', () => this.addChecklist(), 'pb-tool');
+    setIcon(el(checklist, 'span'), 'list-todo');
+    el(checklist, 'span', '', 'Чеклист');
+    const materials = button(
+      tools,
+      '',
+      (e) => {
+        const menu = new Menu();
+        menu.addItem((i) =>
+          i
+            .setTitle('Заметка')
+            .onClick(() => this.plugin.chooseNote(this.file, (target) => this.attachNote(target))),
+        );
+        menu.addItem((i) => i.setTitle('Файл').onClick(() => this.upload()));
+        menu.showAtMouseEvent(e);
+      },
+      'pb-tool',
+    );
+    setIcon(el(materials, 'span'), 'paperclip');
+    el(materials, 'span', '', 'Материалы');
+    this.saveState = el(tools, 'span', 'pb-save-state');
+    this.saveState.setAttribute('role', 'status');
+    const journal = el(this.contentEl, 'section', 'pb-journal');
+    journal.setAttribute('aria-label', 'Обновления задачи');
+    this.nextWrap = nextStep(journal, this.plugin, this.file, () =>
+      this.journalComposer.setMode('next'),
+    );
+    this.feed = el(journal, 'div', 'pb-feed pb-modal-feed');
+    this.feed.setAttribute('role', 'region');
+    this.feed.setAttribute('aria-label', 'История');
+    this.journalComposer = new JournalComposer(this.plugin, this.file, journal);
+    this.updateInput = this.journalComposer.input;
+    this.send = this.journalComposer.send;
+    this.compose = this.journalComposer.form;
+    this.preview();
+    this.plugin.history(this.feed, this.file, this).catch((e) => this.fail(e));
+    grow(this.titleInput, 32, 130);
+    grow(this.editor);
+  }
+  mountRichEditor() {
+    const fallback = this.editor;
+    const host = el(this.bodyWrap, 'div', 'pb-rich-editor');
+    try {
+      this.rich = richEditor(this.app, host, this.session.value, () => {
+        if (!this.settingRich && this.editor === host) this.inputBody();
+      });
+      fallback.remove();
+      this.editor = host;
+      host._rich = true;
+      Object.defineProperty(host, 'value', {
+        get: () => this.rich.editor.getValue(),
+        set: (value) => {
+          this.settingRich = true;
+          try {
+            if (this.rich.editor.getValue() !== value) this.rich.set(value);
+          } finally {
+            this.settingRich = false;
+          }
+        },
+      });
+      host.focus = () => this.rich.editor.focus();
+      host.setSelectionRange = (start, end) =>
+        this.rich.editor.setSelection(
+          this.rich.editor.offsetToPos(start),
+          this.rich.editor.offsetToPos(end),
+        );
+      host.onfocusout = () => this.flushSafe();
+    } catch (e) {
+      host.remove();
+      console.error('Embedded editor unavailable', e);
+      new Notice('Редактор Obsidian не загрузился. Описание доступно в текстовом поле.');
+    }
+  }
+  commitTitle() {
+    const title = this.titleInput?.value.trim();
+    if (!title) {
+      if (this.titleInput) this.titleInput.value = this.task.title || this.file.basename;
+      return Promise.resolve();
+    }
+    if (title === this.task.title) return this.propertySave;
+    return this.change({ title });
+  }
+  renderProps() {
+    const tagDraft =
+      this.tagsInput && this.tagsInput.value !== this.tagsInput._baseline
+        ? this.tagsInput.value
+        : undefined;
+    this.closeCalendar();
+    this.props.querySelectorAll('.pb-picker-wrap').forEach((w) => w._dispose?.());
+    this.props.replaceChildren();
+    const statusButton = picker(
+      this.props,
+      statuses.find((s) => s.value === this.task.status)?.label || this.task.status,
+      'Статус',
+      this.plugin
+        .api()
+        .catalog.statuses()
+        .map((s) => ({
+          value: s.value,
+          label: statuses.find((x) => x.value === s.value)?.label || s.label,
+          selected: s.value === this.task.status,
+          icon: statuses.find((x) => x.value === s.value)?.icon,
+        })),
+      (i) => this.change({ status: i.value }),
+      'pb-chip pb-status',
+    );
+    const statusIcon = el(statusButton, 'span', 'pb-status-icon');
+    setIcon(statusIcon, statuses.find((s) => s.value === this.task.status)?.icon || 'circle');
+    statusIcon.setAttribute('aria-hidden', 'true');
+    statusButton.prepend(statusIcon);
+    const p = this.task.projects?.[0],
+      file = p && this.app.metadataCache.getFirstLinkpathDest(C.linkTarget(p), this.file.path),
+      key = file ? file.path.replace(/\.md$/, '') : C.linkTarget(p || '');
+    const b = button(
+      this.props,
+      '',
+      () => this.plugin.chooseProject((link) => this.change({ projects: link ? [link] : [] })),
+      'pb-chip pb-picker ' + (p ? 'pb-project pb-color-' + C.colorFor(key) : ''),
+    );
+    el(b, 'span', 'pb-picker-label', p ? fileTitle(p) : 'Проект');
+    setIcon(el(b, 'span', 'pb-chevron'), 'chevron-down');
+    b.setAttribute('aria-label', 'Проект');
+    const date = button(this.props, '', () => this.showCalendar(), 'pb-chip pb-date-button');
+    setIcon(el(date, 'span'), 'calendar-days');
+    el(date, 'span', '', dateText(this.task.due));
+    date.setAttribute('aria-label', 'Срок');
+    this.dateButton = date;
+    const system = this.systemTags(),
+      visible = C.tagList(this.task.tags).filter(
+        (t) => !system.some((s) => s.toLowerCase() === t.toLowerCase()),
+      );
+    const tags = el(this.props, 'input', 'pb-tags-input');
+    this.tagsInput = tags;
+    tags.placeholder = '#тег';
+    tags.setAttribute('aria-label', 'Теги');
+    tags.value = tagDraft ?? visible.map((t) => '#' + t).join(' ');
+    tags._baseline = visible.map((t) => '#' + t).join(' ');
+    tags.size = Math.max(5, Math.min(30, tags.value.length + 1));
+    tags.oninput = () => {
+      tags.size = Math.max(5, Math.min(30, tags.value.length + 1));
+    };
+    tags.onblur = () => this.commitTags().catch((e) => this.fail(e));
+    tags.onkeydown = (e) => {
+      if (e.key === 'Enter' && !e.isComposing) {
+        e.preventDefault();
+        tags.blur();
+      }
+    };
+  }
+  systemTags() {
+    return [
+      this.plugin.tn().settings.taskTag || 'task',
+      this.plugin.tn().settings.fieldMapping?.archiveTag || 'archived',
+    ];
+  }
+  commitTags() {
+    const input = this.tagsInput;
+    if (!input || input.value === input._baseline) return Promise.resolve();
+    if (this.tagsSave?.input === input && this.tagsSave.value === input.value)
+      return this.tagsSave.promise;
+    const value = input.value;
+    let tags;
+    try {
+      tags = C.taskTags(value, this.task.tags, this.systemTags());
+    } catch (e) {
+      return Promise.reject(e);
+    }
+    input._baseline = value;
+    const promise = this.change({ tags }).catch((e) => {
+      input._baseline = null;
+      throw e;
+    });
+    this.tagsSave = { input, value, promise };
+    return promise;
+  }
+  showCalendar() {
+    if (this.calendar) {
+      this.closeCalendar();
+      return;
+    }
+    const popup = floatingPopup(this.dateButton, 'pb-calendar');
+    this.calendar = popup;
+    popup.setAttribute('role', 'dialog');
+    popup.setAttribute('aria-label', 'Срок');
+    const current = this.task.due ? new Date(this.task.due.slice(0, 10) + 'T12:00:00') : new Date();
+    let month = new Date(current.getFullYear(), current.getMonth(), 1);
+    const render = () => {
+      popup.replaceChildren();
+      const header = el(popup, 'div', 'pb-calendar-header');
+      icon(header, 'chevron-left', 'Предыдущий месяц', () => {
+        month.setMonth(month.getMonth() - 1);
+        render();
+      }).classList.add('pb-calendar-nav');
+      el(header, 'span', '', month.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' }));
+      icon(header, 'chevron-right', 'Следующий месяц', () => {
+        month.setMonth(month.getMonth() + 1);
+        render();
+      }).classList.add('pb-calendar-nav');
+      const grid = el(popup, 'div', 'pb-calendar-grid');
+      ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].forEach((d) =>
+        el(grid, 'span', 'pb-calendar-weekday', d),
+      );
+      const start = new Date(month);
+      start.setDate(1 - ((month.getDay() + 6) % 7));
+      for (let n = 0; n < 42; n++) {
+        const date = new Date(start);
+        date.setDate(start.getDate() + n);
+        const value = [
+          date.getFullYear(),
+          String(date.getMonth() + 1).padStart(2, '0'),
+          String(date.getDate()).padStart(2, '0'),
+        ].join('-');
+        const day = button(
+          grid,
+          String(date.getDate()),
+          () => {
+            this.closeCalendar();
+            this.change({ due: value }).then(() => this.dateButton?.focus());
+          },
+          'pb-calendar-day',
+        );
+        day.setAttribute(
+          'aria-label',
+          date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }),
+        );
+        if (date.getMonth() !== month.getMonth()) day.classList.add('is-outside');
+        if (date.toDateString() === new Date().toDateString()) day.classList.add('is-today');
+        if (value === this.task.due?.slice(0, 10)) day.classList.add('is-selected');
+      }
+      const footer = el(popup, 'div', 'pb-calendar-footer');
+      button(footer, 'Без срока', async () => {
+        this.closeCalendar();
+        try {
+          this.task = await this.plugin.queue(this.file, () =>
+            this.plugin.api().tasks.clearDue(this.file.path, CONTEXT),
+          );
+          if (!this.closed) {
+            this.renderProps();
+            this.dateButton?.focus();
+          }
+          this.plugin.refresh();
+        } catch (e) {
+          this.fail(e);
+        }
+      });
+    };
+    render();
+    positionPopup(popup, this.dateButton);
+    this.calendarOutside = (e) => {
+      if (!popup.contains(e.target) && !this.dateButton.contains(e.target)) this.closeCalendar();
+    };
+    document.addEventListener('pointerdown', this.calendarOutside);
+    popup.onkeydown = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        this.closeCalendar();
+        this.dateButton?.focus();
+      }
+      if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
+        const days = [...popup.querySelectorAll('.pb-calendar-day')],
+          i = days.indexOf(document.activeElement);
+        if (i >= 0) {
+          e.preventDefault();
+          const delta = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 }[e.key];
+          days[Math.max(0, Math.min(41, i + delta))].focus();
+        }
+      }
+    };
+    (
+      popup.querySelector('.is-selected') ||
+      popup.querySelector('.is-today') ||
+      popup.querySelector('.pb-calendar-day')
+    ).focus();
+  }
+  closeCalendar() {
+    if (this.calendarOutside) document.removeEventListener('pointerdown', this.calendarOutside);
+    this.calendar?._dispose();
+    this.calendar = null;
+  }
+  change(patch) {
+    const activeKey = this.props?.contains(document.activeElement)
+      ? document.activeElement.getAttribute('aria-label')
+      : null;
+    this.propertySave = this.propertySave
+      .catch(() => {})
+      .then(async () => {
+        this.task = await this.plugin.patch(this.file, patch);
+        if (!this.closed) {
+          this.renderProps();
+          if (activeKey)
+            [...this.props.querySelectorAll('[aria-label]')]
+              .find((e) => e.getAttribute('aria-label') === activeKey)
+              ?.focus();
+          this.saved();
+        }
+      });
+    this.propertySave.catch((e) => this.fail(e));
+    return this.propertySave;
+  }
+  saved() {
+    if (!this.saveState || this.closed) return;
+    this.saveState.classList.remove('is-error');
+    this.saveState.textContent = '';
+    setIcon(this.saveState, 'check');
+    this.saveState.setAttribute('aria-label', 'Сохранено');
+    clearTimeout(this.savedTimer);
+    this.savedTimer = setTimeout(() => {
+      if (!this.closed) this.saveState.replaceChildren();
+    }, 1100);
+  }
+  saveDraft() {
+    if (!this.session) return Promise.resolve();
+    return this.plugin.setDraft(this.file.path, {
+      body: this.session.dirty ? this.session.value : undefined,
+      bodyBase: this.session.dirty ? this.session.baseline : undefined,
+      ...(!this.journalComposer ? { update: this.updateInput?.value || undefined } : {}),
+    });
+  }
+  scheduleSave() {
+    clearTimeout(this.saveTimer);
+    this.saveDraft().catch((e) => this.fail(e));
+    this.saveTimer = setTimeout(() => this.flushSafe(), 450);
+  }
+  async flush() {
+    clearTimeout(this.saveTimer);
+    await this.session.flush();
+    await this.saveDraft();
+    this.saved();
+  }
+  async flushSafe() {
+    try {
+      await this.flush();
+      return true;
+    } catch (e) {
+      await this.saveDraft().catch(() => {});
+      this.fail(e);
+      return false;
+    }
+  }
+  fail(e) {
+    if (this.closed) return;
+    if (this.saveState) {
+      this.saveState.classList.add('is-error');
+      this.saveState.textContent = 'Не сохранено';
+    }
+    new Notice(errorMessage(e), 7000);
+    if (e.message === 'BODY_CONFLICT' && !this.recoverButton)
+      this.recoverButton = button(
+        this.contentEl,
+        'Сохранить копию',
+        async () => {
+          const f = await this.plugin.uniqueNote(
+            'Материалы',
+            this.file.basename + ' — моя версия',
+            this.session.value,
+          );
+          const note = await this.plugin.note(this.file);
+          this.session = new C.BodySession(note.body, (a, b) =>
+            this.plugin.writeBody(this.file, a, b),
+          );
+          await this.saveDraft();
+          await this.close();
+          this.plugin.openFile(f);
+        },
+        'pb-recover',
+      );
+  }
+  edit() {
+    this.previewEl.hidden = true;
+    this.editor.hidden = false;
+    this.editor.value = this.session.value.trim() ? this.session.value : '';
+    grow(this.editor);
+    this.editor.focus();
+  }
+  inputBody() {
+    this.session.set(this.editor.value);
+    this.scheduleSave();
+    grow(this.editor);
+  }
+  async finishEdit() {
+    if (!this.editor || this.editor.hidden) return;
+    await this.flushSafe();
+  }
+  async toggleBodyView() {
+    if (this.editor.hidden) {
+      this.edit();
+      return;
+    }
+    if (!(await this.flushSafe())) return;
+    this.editor.hidden = true;
+    this.previewEl.hidden = false;
+    await this.preview();
+  }
+  async preview() {
+    if (this.closed || !this.editor.hidden) return;
+    const seq = ++this.renderSeq;
+    this.previewEl.replaceChildren();
+    this.renderComponent.unload();
+    this.renderComponent = new Component();
+    this.renderComponent.load();
+    const body = this.session.value,
+      lines = body.split('\n'),
+      checks = C.parseChecklist(body);
+    let previous = 0;
+    const chunk = async (start, end) => {
+      if (end <= start) return;
+      const source = lines.slice(start, end).join('\n');
+      if (!source.trim()) return;
+      const region = el(this.previewEl, 'div', 'pb-description-region');
+      await MarkdownRenderer.render(this.app, source, region, this.file.path, this.renderComponent);
+      if (seq !== this.renderSeq) return;
+      region.onclick = (e) => {
+        if (e.target.closest('a,input,button') || window.getSelection()?.toString()) return;
+        this.edit(start, end);
+      };
+      region.querySelectorAll('a.internal-link').forEach(
+        (a) =>
+          (a.onclick = async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (await this.close())
+              this.app.workspace.openLinkText(
+                a.dataset.href || a.getAttribute('href'),
+                this.file.path,
+                true,
+              );
+          }),
+      );
+      region.querySelectorAll('input.task-list-item-checkbox').forEach((box) => {
+        box.disabled = true;
+      });
+    };
+    if (!checks.length) {
+      if (!body.trim()) button(this.previewEl, 'Описание', () => this.edit(), 'pb-placeholder');
+      else await chunk(0, lines.length);
+      return;
+    }
+    if (!lines.slice(0, checks[0].line).join('\n').trim())
+      button(this.previewEl, 'Описание', () => this.edit(0, checks[0].line), 'pb-placeholder');
+    for (const item of checks) {
+      await chunk(previous, item.line);
+      if (seq !== this.renderSeq) return;
+      const row = el(this.previewEl, 'div', 'pb-check-row');
+      row.dataset.line = String(item.line);
+      const box = el(row, 'input');
+      box.type = 'checkbox';
+      box.checked = item.checked;
+      box.setAttribute('aria-label', item.text || 'Выполнено');
+      const text = el(row, 'input', 'pb-check-text');
+      text.value = item.text;
+      text.placeholder = 'Пункт';
+      text.setAttribute('aria-label', 'Пункт чеклиста');
+      row.classList.toggle('is-complete', box.checked);
+      box.onchange = () => {
+        try {
+          this.session.set(
+            C.setChecklistItem(this.session.value, item.line, { checked: box.checked }),
+          );
+          row.classList.toggle('is-complete', box.checked);
+          this.scheduleSave();
+        } catch (e) {
+          this.fail(e);
+        }
+      };
+      text.oninput = () => {
+        try {
+          this.session.set(C.setChecklistItem(this.session.value, item.line, { text: text.value }));
+          this.scheduleSave();
+        } catch (e) {
+          this.fail(e);
+        }
+      };
+      text.onblur = () => this.flushSafe();
+      text.onkeydown = async (e) => {
+        if (e.key === 'Enter' && !e.isComposing) {
+          e.preventDefault();
+          if (!text.value.trim()) {
+            this.session.set(C.removeChecklistItem(this.session.value, item.line));
+            await this.preview();
+            this.updateInput.focus();
+            this.scheduleSave();
+          } else {
+            this.session.set(C.addChecklistItem(this.session.value, '', item.line));
+            await this.preview();
+            this.previewEl
+              .querySelector('[data-line="' + (item.line + 1) + '"] .pb-check-text')
+              ?.focus();
+            this.scheduleSave();
+          }
+        }
+      };
+      previous = item.line + 1;
+    }
+    await chunk(previous, lines.length);
+  }
+  async addChecklist() {
+    if (!(await this.flushSafe())) return;
+    try {
+      this.session.set(C.addChecklistItem(this.session.value, ''));
+      this.edit();
+      const end = this.editor.value.replace(/\r?\n$/, '').length;
+      this.editor.setSelectionRange(end, end);
+      this.scheduleSave();
+    } catch (e) {
+      this.fail(e);
+    }
+  }
+  async attachNote(target) {
+    if (!(await this.flushSafe())) return;
+    const link = this.app.fileManager.generateMarkdownLink(target, this.file.path);
+    this.session.set(this.session.value.trimEnd() + '\n\n' + link + '\n');
+    this.editor.value = this.session.value.trim() ? this.session.value : '';
+    grow(this.editor);
+    if (await this.flushSafe()) await this.preview();
+  }
+  postUpdate() {
+    if (this.journalComposer) return this.journalComposer.model.submit(this.journalComposer.mode);
+    if (this.postPromise) return this.postPromise;
+    this.postPromise = this.doPostUpdate().finally(() => {
+      this.postPromise = null;
+    });
+    return this.postPromise;
+  }
+  async doPostUpdate() {
+    if (this.posting) return;
+    const text = this.updateInput.value.trim();
+    if (!text) return;
+    this.posting = true;
+    this.send.disabled = true;
+    const original = this.updateInput.value;
+    try {
+      if (!(await this.flushSafe()) || this.closed || this.plugin.disposed) return;
+      await this.plugin.addUpdate(this.file, text);
+      if (this.updateInput.value === original) this.updateInput.value = '';
+      await this.saveDraft();
+      if (this.closed) return;
+      this.send.hidden = !this.updateInput.value.trim();
+      grow(this.updateInput, 28, 100);
+      await this.plugin.history(this.feed, this.file, this);
+      this.feed.scrollTop = 0;
+    } catch (e) {
+      this.fail(e);
+    } finally {
+      this.posting = false;
+      this.send.disabled = false;
+    }
+  }
+
+  upload() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.multiple = true;
+    input.onchange = async () => {
+      try {
+        if (!(await this.flushSafe())) return;
+        await this.plugin.ensureFolder('Вложения');
+        for (const f of input.files) {
+          const safe = f.name.replace(/[\\/:*?"<>|]/g, '_');
+          let path = normalizePath('Вложения/' + safe),
+            n = 2;
+          const dot = safe.lastIndexOf('.');
+          while (this.app.vault.getAbstractFileByPath(path))
+            path = normalizePath(
+              'Вложения/' +
+                (dot > 0 ? safe.slice(0, dot) : safe) +
+                ' ' +
+                n++ +
+                (dot > 0 ? safe.slice(dot) : ''),
+            );
+          const target = await this.app.vault.createBinary(path, await f.arrayBuffer());
+          await this.attachNote(target);
+        }
+      } catch (e) {
+        this.fail(e);
+      }
+    };
+    input.click();
+  }
+  async syncExternal() {
+    if (
+      this.closed ||
+      !this.session ||
+      this.syncing ||
+      this.posting ||
+      this.session.pending ||
+      this.session.dirty ||
+      document.activeElement === this.editor ||
+      this.bodyWrap?.contains(document.activeElement) ||
+      this.previewEl.contains(document.activeElement)
+    )
+      return;
+    this.syncing = true;
+    const beforeValue = this.session.value,
+      beforeBaseline = this.session.baseline,
+      beforeTask = this.task,
+      beforeProperties = this.propertySave;
+    try {
+      const [task, note] = await Promise.all([
+        this.plugin.api().tasks.get(this.file.path),
+        this.plugin.note(this.file),
+      ]);
+      if (
+        this.closed ||
+        !task ||
+        this.session.dirty ||
+        this.session.pending ||
+        document.activeElement === this.editor ||
+        this.bodyWrap?.contains(document.activeElement) ||
+        this.session.value !== beforeValue ||
+        this.session.baseline !== beforeBaseline ||
+        this.task !== beforeTask ||
+        this.propertySave !== beforeProperties ||
+        this.previewEl.contains(document.activeElement)
+      )
+        return;
+      const propsChanged =
+        JSON.stringify([task.status, task.projects, task.tags, task.due]) !==
+        JSON.stringify([this.task.status, this.task.projects, this.task.tags, this.task.due]);
+      this.task = task;
+      if (
+        document.activeElement !== this.titleInput &&
+        this.titleInput.value.trim() === (beforeTask.title || this.file.basename)
+      )
+        this.titleInput.value = task.title || this.file.basename;
+      if (propsChanged && !this.props.contains(document.activeElement) && !this.calendar)
+        this.renderProps();
+      if (note.body !== this.session.value) {
+        this.session.reset(note.body);
+        if (!this.editor.hidden) {
+          this.editor.value = this.session.value.trim() ? this.session.value : '';
+          grow(this.editor);
+        }
+        await this.preview();
+      }
+      await this.plugin.history(this.feed, this.file, this);
+    } finally {
+      this.syncing = false;
+    }
+  }
+  async close() {
+    if (this.closed) return true;
+    if (!this.session) {
+      this.closed = true;
+      super.close();
+      return true;
+    }
+    try {
+      if (this.postPromise) await this.postPromise;
+      await this.commitTags();
+      await this.commitTitle();
+      await this.propertySave;
+      await this.saveDraft();
+      if (!(await this.flushSafe())) return false;
+    } catch (e) {
+      this.fail(e);
+      return false;
+    }
+    this.closed = true;
+    super.close();
+    return true;
+  }
+  shutdown() {
+    this.saveDraft().catch(console.error);
+    this.session?.flush().catch(console.error);
+    this.closed = true;
+    super.close();
+  }
+  onClose() {
+    this.closed = true;
+    clearTimeout(this.saveTimer);
+    clearTimeout(this.savedTimer);
+    this.closeCalendar();
+    this.props?.querySelectorAll('.pb-picker-wrap').forEach((w) => w._dispose?.());
+    this.journalComposer?.dispose();
+    this.nextWrap?._dispose?.();
+    if (this.feed?._component) this.plugin.disposeHistory(this.feed);
+    this.rich?.dispose();
+    this.renderComponent.unload();
+    this.plugin.modals.delete(this);
+    this.contentEl.empty();
+  }
+}
+module.exports = PikoBoard;

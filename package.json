@@ -1,0 +1,19 @@
+{
+  "name": "obsidian-pikoboard",
+  "version": "0.6.1",
+  "private": true,
+  "scripts": {
+    "test": "node build.js && node --test tests/*.test.js",
+    "check": "node --check main.js && node --check core.js",
+    "build": "node build.js"
+  },
+  "description": "Минималистичная доска для Obsidian и TaskNotes",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://gitlab.com/ksumarshmallow/obsidian-pikoboard.git"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
