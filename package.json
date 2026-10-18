@@ -1,13 +1,13 @@
 {
   "name": "obsidian-pikoboard",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "private": true,
   "scripts": {
     "test": "node build.js && node --test tests/*.test.js",
-    "check": "node --check main.js && node --check core.js",
+    "check": "node --check main.js && node --check core.js && node --check task-store.js",
     "build": "node build.js"
   },
-  "description": "Минималистичная доска для Obsidian и TaskNotes",
+  "description": "Минималистичная самостоятельная доска для Obsidian",
   "license": "MIT",
   "repository": {
     "type": "git",

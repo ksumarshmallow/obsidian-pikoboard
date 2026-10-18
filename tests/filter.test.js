@@ -8,7 +8,13 @@ const C = require('../core');
 function fixture() {
   const source = fs.readFileSync(path.join(__dirname, '../plugin.js'), 'utf8');
   const base = class {};
-  const obs = { Plugin: base, ItemView: base, Modal: base, FuzzySuggestModal: base };
+  const obs = {
+    Plugin: base,
+    PluginSettingTab: base,
+    ItemView: base,
+    Modal: base,
+    FuzzySuggestModal: base,
+  };
   const scope = { require: (n) => (n === 'obsidian' ? obs : C), module: { exports: {} }, console };
   vm.runInNewContext(source, scope);
   const plugin = Object.create(scope.module.exports.prototype);
@@ -24,7 +30,7 @@ function fixture() {
     { path: 'Задачи/Пример.md', projects: [], tags: ['task', 'быт'] },
   ];
   plugin.api = () => ({ tasks: { list: async () => raw } });
-  plugin.tn = () => ({ settings: { taskTag: 'task', fieldMapping: { archiveTag: 'archived' } } });
+  plugin.systemTags = () => ['task', 'archived'];
   plugin.app = {
     vault: { getMarkdownFiles: () => [project] },
     metadataCache: {

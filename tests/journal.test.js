@@ -14,6 +14,7 @@ const defer = () => {
 function setup(next = '') {
   const obs = {
     Plugin: class {},
+    PluginSettingTab: class {},
     ItemView: class {},
     Modal: class {},
     FuzzySuggestModal: class {},

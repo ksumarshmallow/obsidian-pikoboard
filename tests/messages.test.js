@@ -41,6 +41,7 @@ function fixture() {
   const element = () => ({ append() {}, set className(v) {}, set textContent(v) {} }),
     obs = {
       Plugin: base,
+      PluginSettingTab: base,
       ItemView: base,
       Modal: base,
       FuzzySuggestModal: base,

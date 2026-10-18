@@ -1,6 +1,10 @@
 'use strict';
 const {
   Plugin,
+  PluginSettingTab,
+  Setting,
+  parseYaml,
+  stringifyYaml,
   ItemView,
   Modal,
   FuzzySuggestModal,
@@ -14,6 +18,7 @@ const {
   normalizePath,
 } = require('obsidian');
 const C = require('./core');
+const S = require('./task-store');
 const TYPE = 'personal-board-view';
 const CONTEXT = { source: 'personal-board' };
 const statuses = [
@@ -945,6 +950,8 @@ class PikoBoard extends Plugin {
     this.noteCache = new Map();
     this.journals = new Map();
     this.disposed = false;
+    await this.initializeStorage();
+    this.addSettingTab(new PikoBoardSettings(this.app, this));
     this.registerView(TYPE, (leaf) => new BoardView(leaf, this));
     this.addCommand({
       id: 'restore-message',
@@ -957,7 +964,7 @@ class PikoBoard extends Plugin {
       name: 'Создать задачу',
       callback: () => this.createTask('open'),
     });
-    this.addRibbonIcon('columns-3', 'Дела', () => this.openBoard());
+    this.addRibbonIcon('columns-3', 'PikoBoard', () => this.openBoard());
     const refresh = (file) => {
       if (file?.path) this.noteCache.delete(file.path);
       clearTimeout(this.refreshTimer);
@@ -971,6 +978,10 @@ class PikoBoard extends Plugin {
         for (const entry of this.data.deletedUpdates || [])
           if (entry.path === old) entry.path = file.path;
         this.data.order = this.data.order.map((p) => (p === old ? file.path : p));
+        if (this.data.archiveSchedule?.[old]) {
+          this.data.archiveSchedule[file.path] = this.data.archiveSchedule[old];
+          delete this.data.archiveSchedule[old];
+        }
         this.persist().catch(console.error);
         if (this.data.drafts[old]) {
           this.data.drafts[file.path] = this.data.drafts[old];
@@ -989,8 +1000,16 @@ class PikoBoard extends Plugin {
       this.disposed = true;
       clearTimeout(this.refreshTimer);
     });
-    this.registerInterval(window.setInterval(() => this.refresh(), 60000));
-    this.app.workspace.onLayoutReady(() => this.refresh());
+    const maintain = async () => {
+      try {
+        await this.store.archiveExpired();
+      } catch (e) {
+        console.error('PikoBoard archive:', e);
+      }
+      this.refresh();
+    };
+    this.registerInterval(window.setInterval(maintain, 60000));
+    this.app.workspace.onLayoutReady(maintain);
   }
   onunload() {
     activeActionMenu?.close();
@@ -1013,14 +1032,48 @@ class PikoBoard extends Plugin {
     else delete this.data.drafts[path];
     return this.persist();
   }
-  api() {
-    const a = this.app.plugins.getPlugin('tasknotes')?.api;
-    if (!a || a.apiVersion !== 1 || !a.hasCapability('tasks.write'))
-      throw new Error('Включите TaskNotes 4.13.8 или новее.');
-    return a;
+  async initializeStorage() {
+    if (!this.data.settings) {
+      const legacyPath = this.app.vault.configDir + '/plugins/tasknotes/data.json';
+      let legacy = {};
+      if (await this.app.vault.adapter.exists(legacyPath)) {
+        try {
+          legacy = JSON.parse(await this.app.vault.adapter.read(legacyPath));
+        } catch (e) {
+          new Notice(
+            'Настройки старого хранилища задач не прочитаны. Проверьте папку в настройках PikoBoard.',
+          );
+        }
+      }
+      this.data.settings = S.migrateSettings(legacy);
+      this.data.archiveSchedule = {};
+      for (const item of legacy.autoArchiveQueue || []) {
+        if (typeof item.taskPath === 'string' && Number.isFinite(item.archiveAfterTimestamp))
+          this.data.archiveSchedule[item.taskPath] = { after: item.archiveAfterTimestamp };
+      }
+      await this.persist();
+    }
+    this.settings = S.settingsFrom(this.data.settings);
+    this.store = new S.TaskStore({
+      app: this.app,
+      settings: () => this.settings,
+      parseYaml,
+      stringifyYaml,
+      archiveSchedule: this.data.archiveSchedule || {},
+      onScheduleChange: () => this.persist(),
+    });
   }
-  tn() {
-    return this.app.plugins.getPlugin('tasknotes');
+  async saveSettings(patch) {
+    this.settings = S.settingsFrom({ ...this.settings, ...patch });
+    this.data.settings = this.settings;
+    await this.persist();
+    this.refresh();
+  }
+  api() {
+    return this.store;
+  }
+  systemTags() {
+    return this.store.systemTags();
   }
   async openBoard() {
     let leaf = this.app.workspace.getLeavesOfType(TYPE)[0];
@@ -1309,15 +1362,14 @@ class PikoBoard extends Plugin {
     });
   }
   async tasks() {
-    const settings = this.tn().settings;
-    const system = new Set([settings.taskTag, settings.fieldMapping?.archiveTag || 'archived']);
+    const system = new Set(this.systemTags().map((t) => t.toLowerCase()));
     return (await this.api().tasks.list()).map((t) => ({
       ...t,
       projects: (t.projects || []).map((p) => {
         const f = this.app.metadataCache.getFirstLinkpathDest(C.linkTarget(p), t.path);
         return f ? '[[' + f.path.replace(/\.md$/, '') + ']]' : p;
       }),
-      visibleTags: C.tagList(t.tags).filter((t) => !system.has(t)),
+      visibleTags: C.tagList(t.tags).filter((t) => !system.has(t.toLowerCase())),
     }));
   }
   projects() {
@@ -2406,10 +2458,7 @@ class TaskModal extends Modal {
     };
   }
   systemTags() {
-    return [
-      this.plugin.tn().settings.taskTag || 'task',
-      this.plugin.tn().settings.fieldMapping?.archiveTag || 'archived',
-    ];
+    return this.plugin.systemTags();
   }
   commitTags() {
     const input = this.tagsInput;
@@ -2937,6 +2986,53 @@ class TaskModal extends Modal {
     this.renderComponent.unload();
     this.plugin.modals.delete(this);
     this.contentEl.empty();
+  }
+}
+class PikoBoardSettings extends PluginSettingTab {
+  constructor(app, plugin) {
+    super(app, plugin);
+    this.plugin = plugin;
+  }
+  display() {
+    const { containerEl } = this;
+    containerEl.empty();
+    const save = (patch) =>
+      this.plugin.saveSettings(patch).catch((e) => new Notice(errorMessage(e)));
+    new Setting(containerEl)
+      .setName('Папка новых задач')
+      .setDesc('Существующие задачи остаются на своих местах.')
+      .addText((field) => {
+        field.setValue(this.plugin.settings.tasksFolder).setPlaceholder('Задачи');
+        field.inputEl.addEventListener('change', () =>
+          save({ tasksFolder: field.getValue().trim() }),
+        );
+      });
+    new Setting(containerEl)
+      .setName('Архивировать завершённые задачи')
+      .setDesc('Файлы сохраняются. Задачи можно вернуть из архива.')
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.autoArchive)
+          .onChange((value) => save({ autoArchive: value })),
+      );
+    new Setting(containerEl).setName('Дней до архивации').addText((field) => {
+      field.setValue(String(this.plugin.settings.archiveDays));
+      field.inputEl.type = 'number';
+      field.inputEl.min = '1';
+      field.inputEl.addEventListener('change', () => {
+        const days = Number(field.getValue());
+        if (!Number.isFinite(days) || days < 1) {
+          field.setValue(String(this.plugin.settings.archiveDays));
+          return;
+        }
+        save({ archiveDays: days });
+      });
+    });
+    new Setting(containerEl)
+      .setName('Доска')
+      .addButton((b) =>
+        b.setButtonText('Открыть PikoBoard').onClick(() => this.plugin.openBoard()),
+      );
   }
 }
 module.exports = PikoBoard;

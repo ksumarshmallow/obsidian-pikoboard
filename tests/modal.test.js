@@ -31,6 +31,7 @@ function setup(body = 'Old') {
   }
   const obs = {
     Plugin: class {},
+    PluginSettingTab: class {},
     ItemView: class {},
     Modal,
     FuzzySuggestModal: class {},

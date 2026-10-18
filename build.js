@@ -2,9 +2,14 @@ const fs = require('node:fs');
 const path = require('node:path');
 const core = fs.readFileSync(path.join(__dirname, 'core.js'), 'utf8');
 const plugin = fs.readFileSync(path.join(__dirname, 'plugin.js'), 'utf8');
-const bundle = plugin.replace(
+let bundle = plugin.replace(
   "require('./core')",
   () => `(()=>{const module={exports:{}};${core}\nreturn module.exports;})()`,
+);
+const store = fs.readFileSync(path.join(__dirname, 'task-store.js'), 'utf8');
+bundle = bundle.replace(
+  "require('./task-store')",
+  () => `(()=>{const module={exports:{}};${store}\nreturn module.exports;})()`,
 );
 new (require('node:vm').Script)(bundle, { filename: 'main.js' });
 fs.writeFileSync(

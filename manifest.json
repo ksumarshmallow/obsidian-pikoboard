@@ -1,9 +1,9 @@
 {
   "id": "personal-board",
   "name": "PikoBoard",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "minAppVersion": "1.12.2",
-  "description": "Личная доска задач: домены, общий фокус, комментарии с материалами и следующий шаг. Требует TaskNotes 4.13.8+.",
+  "description": "Самостоятельная доска задач: проекты, сроки, комментарии с материалами и следующий шаг.",
   "author": "ksumarshmallow",
   "isDesktopOnly": false,
   "authorUrl": "https://gitlab.com/ksumarshmallow"

@@ -121,6 +121,7 @@ function fixture(
   const base = class {};
   const obs = {
     Plugin: base,
+    PluginSettingTab: base,
     ItemView: base,
     Modal: base,
     FuzzySuggestModal: base,

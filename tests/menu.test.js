@@ -71,6 +71,7 @@ function fixture() {
       n === 'obsidian'
         ? {
             Plugin: base,
+            PluginSettingTab: base,
             ItemView: base,
             Modal: base,
             FuzzySuggestModal: base,
