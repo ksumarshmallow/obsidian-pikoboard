@@ -72,7 +72,7 @@ test('the committed bundle fully starts with only the Obsidian API', async () =>
     },
   });
   await plugin.onload();
-  assert.ok(registrations.includes('personal-board-view'));
+  assert.ok(registrations.includes('pikoboard-view'));
   assert.ok(registrations.includes('settings'));
   assert.ok(registrations.includes('create'));
   assert.equal(plugin.api().catalog.statuses().length, 3);

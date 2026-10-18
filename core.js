@@ -1,8 +1,8 @@
 'use strict';
-const START = '<!-- personal-board:updates:start -->';
-const END = '<!-- personal-board:updates:end -->';
-const NEXT_START = '<!-- personal-board:next:start -->';
-const NEXT_END = '<!-- personal-board:next:end -->';
+const START = '<!-- pikoboard:updates:start -->';
+const END = '<!-- pikoboard:updates:end -->';
+const NEXT_START = '<!-- pikoboard:next:start -->';
+const NEXT_END = '<!-- pikoboard:next:end -->';
 const entryPattern = () =>
   /<!-- pb:entry ([\w-]+) ([^\s]+)(?: (done))? -->\r?\n### [^\r\n]+\r?\n([\s\S]*?)\r?\n<!-- pb:end -->/g;
 function frontmatter(text) {
@@ -57,7 +57,7 @@ function readNote(text) {
     nextSection = '';
   if (next && !next.invalid && !overlap) {
     const match = next.section.match(
-      /^<!-- personal-board:next:start -->\r?\n## Следующий шаг\r?\n([\s\S]*?)\r?\n<!-- personal-board:next:end -->$/,
+      /^<!-- pikoboard:next:start -->\r?\n## Следующий шаг\r?\n([\s\S]*?)\r?\n<!-- pikoboard:next:end -->$/,
     );
     if (match) {
       nextAction = match[1].trim();
@@ -97,7 +97,7 @@ function validNote(text) {
 function validText(value, emptyError) {
   if (typeof value !== 'string' || (emptyError && !value.trim()))
     throw new Error(emptyError || 'BAD_NEXT_ACTION');
-  if (value.includes('<!-- pb:') || value.includes('<!-- personal-board:'))
+  if (value.includes('<!-- pb:') || value.includes('<!-- pikoboard:'))
     throw new Error('RESERVED_MARKER');
   return value.trim();
 }

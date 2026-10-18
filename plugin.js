@@ -19,8 +19,8 @@ const {
 } = require('obsidian');
 const C = require('./core');
 const S = require('./task-store');
-const TYPE = 'personal-board-view';
-const CONTEXT = { source: 'personal-board' };
+const TYPE = 'pikoboard-view';
+const CONTEXT = { source: 'pikoboard' };
 const statuses = [
   { value: 'open', label: 'backlog', cls: 'plan', icon: 'inbox' },
   { value: 'in-progress', label: 'in progress', cls: 'work', icon: 'circle-dashed' },
@@ -91,7 +91,7 @@ function positionPopup(popup, anchor) {
 function floatingPopup(anchor, cls) {
   const doc = anchor.ownerDocument,
     win = doc.defaultView;
-  const layer = el(anchor.closest('.modal') || doc.body, 'div', 'personal-board pb-floating-layer');
+  const layer = el(anchor.closest('.modal') || doc.body, 'div', 'pikoboard pb-floating-layer');
   const popup = el(layer, 'div', 'pb-popover ' + cls);
   const reposition = (e) => {
     if (!anchor.isConnected) return;
@@ -352,7 +352,7 @@ class AskModal extends Modal {
   }
   onOpen() {
     this.modalEl.addClass('pb-prompt');
-    this.contentEl.addClass('personal-board');
+    this.contentEl.addClass('pikoboard');
     const form = el(this.contentEl, 'form');
     const input = el(form, this.multiline ? 'textarea' : 'input', 'pb-input');
     input.value = this.value;
@@ -386,7 +386,7 @@ class DeleteConfirmModal extends Modal {
   }
   onOpen() {
     this.modalEl.addClass('pb-delete-modal');
-    this.contentEl.addClass('personal-board');
+    this.contentEl.addClass('pikoboard');
     el(this.contentEl, 'h3', '', 'Удалить задачу?');
     el(this.contentEl, 'p', 'pb-delete-name', this.taskTitle);
     el(this.contentEl, 'p', 'pb-delete-hint', 'Файл будет перемещён в корзину хранилища.');
@@ -416,7 +416,7 @@ class ConfirmMessageModal extends Modal {
   }
   onOpen() {
     this.modalEl.addClass('pb-delete-modal');
-    this.contentEl.addClass('personal-board');
+    this.contentEl.addClass('pikoboard');
     el(this.contentEl, 'h3', '', this.heading);
     el(this.contentEl, 'p', 'pb-delete-name', this.text);
     const actions = el(this.contentEl, 'div', 'pb-delete-actions');
@@ -443,7 +443,7 @@ class EditMessageModal extends Modal {
   }
   onOpen() {
     this.modalEl.addClass('pb-message-editor');
-    this.contentEl.addClass('personal-board');
+    this.contentEl.addClass('pikoboard');
     el(this.contentEl, 'h3', '', 'Изменить запись');
     const input = el(this.contentEl, 'textarea', 'pb-message-edit-input');
     input.value = this.update.text;
@@ -1615,7 +1615,7 @@ class BoardView extends ItemView {
   }
   async onOpen() {
     this.contentEl.empty();
-    this.root = el(this.contentEl, 'div', 'personal-board');
+    this.root = el(this.contentEl, 'div', 'pikoboard');
     this.toolbar = el(this.root, 'div', 'pb-toolbar');
     this.domains = el(this.root, 'div', 'pb-domains');
     this.area = el(this.root, 'div', 'pb-board');
@@ -2222,7 +2222,7 @@ class TaskModal extends Modal {
   async onOpen() {
     this.plugin.modals.add(this);
     this.modalEl.addClass('pb-task-modal');
-    this.contentEl.addClass('personal-board');
+    this.contentEl.addClass('pikoboard');
     try {
       this.task = await this.plugin.api().tasks.get(this.file.path);
       if (!this.task) throw new Error('Задача не найдена');
