@@ -2208,12 +2208,201 @@ function configInput(parent, title, value, type = 'text') {
   input.setAttribute('aria-label', title);
   return input;
 }
-class BoardSettingsModal extends Modal {
-  constructor(plugin, file, focusColumn) {
+const COLUMN_ICONS = [
+  ['inbox', 'Входящие'],
+  ['circle-dashed', 'В процессе'],
+  ['circle-check', 'Готово'],
+  ['clock', 'Часы'],
+  ['star', 'Звезда'],
+  ['flag', 'Флаг'],
+  ['bookmark', 'Закладка'],
+  ['lightbulb', 'Идея'],
+  ['flask-conical', 'Исследование'],
+  ['rocket', 'Ракета'],
+  ['heart', 'Сердце'],
+  ['coffee', 'Кофе'],
+  ['briefcase-business', 'Работа'],
+  ['house', 'Дом'],
+  ['book-open', 'Книга'],
+  ['plane', 'Путешествие'],
+  ['message-circle', 'Сообщение'],
+  ['pause', 'Пауза'],
+  ['eye', 'Проверка'],
+  ['archive', 'Архив'],
+];
+const COLUMN_EMOJI = [
+  '✨',
+  '💡',
+  '📥',
+  '📝',
+  '🎯',
+  '🚀',
+  '👀',
+  '⏳',
+  '✅',
+  '📚',
+  '💻',
+  '🏠',
+  '🌿',
+  '💜',
+  '☕',
+  '🧘',
+  '🧠',
+  '✈️',
+  '🎨',
+  '🐈',
+];
+function symbolPicker(parent, column, onChange, app) {
+  const wrap = el(parent, 'div', 'pb-symbol-wrap');
+  let popup = null,
+    cleanup = () => {};
+  const trigger = button(wrap, '', () => (popup ? close(true) : open()), 'pb-symbol-trigger');
+  trigger.setAttribute('aria-label', 'Выбрать значок');
+  trigger.setAttribute('aria-haspopup', 'dialog');
+  trigger.setAttribute('aria-expanded', 'false');
+  const paint = () => {
+    trigger.replaceChildren();
+    statusMark(trigger, column.icon || 'plus');
+    trigger.classList.toggle('is-empty', !column.icon);
+  };
+  paint();
+  function close(focus = false) {
+    if (!popup) return;
+    cleanup();
+    popup._dispose();
+    popup = null;
+    trigger.setAttribute('aria-expanded', 'false');
+    if (focus && trigger.isConnected) trigger.focus();
+  }
+  function select(value) {
+    column.icon = value;
+    paint();
+    onChange();
+    close(true);
+  }
+  function open() {
+    popup = floatingPopup(trigger, 'pb-symbol-popover');
+    popup.setAttribute('role', 'dialog');
+    popup.setAttribute('aria-label', 'Значок столбца');
+    trigger.setAttribute('aria-expanded', 'true');
+    const doc = trigger.ownerDocument;
+    const tabs = el(popup, 'div', 'pb-symbol-tabs');
+    const grid = el(popup, 'div', 'pb-symbol-grid');
+    const custom = el(popup, 'form', 'pb-symbol-custom');
+    const entry = el(custom, 'input');
+    entry.placeholder = 'Свой эмодзи';
+    entry.setAttribute('aria-label', 'Свой эмодзи');
+    entry.maxLength = 16;
+    const use = icon(custom, 'arrow-up', 'Выбрать эмодзи', () => custom.requestSubmit());
+    use.disabled = true;
+    const valid = () => /\p{Extended_Pictographic}|\p{Regional_Indicator}/u.test(entry.value);
+    entry.oninput = () => {
+      use.disabled = !valid();
+    };
+    custom.onsubmit = (e) => {
+      e.preventDefault();
+      if (valid()) select(entry.value.trim());
+    };
+    const draw = (emoji) => {
+      grid.replaceChildren();
+      custom.hidden = !emoji;
+      icons.setAttribute('aria-pressed', String(!emoji));
+      emojis.setAttribute('aria-pressed', String(emoji));
+      for (const [value, label] of emoji ? COLUMN_EMOJI.map((x) => [x, x]) : COLUMN_ICONS) {
+        const choice = button(grid, '', () => select(value), 'pb-symbol-choice');
+        statusMark(choice, value);
+        choice.setAttribute('aria-label', label);
+        choice.setAttribute('aria-pressed', String(column.icon === value));
+      }
+      positionPopup(popup, trigger);
+    };
+    const icons = button(tabs, 'Иконки', () => draw(false));
+    const emojis = button(tabs, 'Эмодзи', () => draw(true));
+    button(popup, 'Без значка', () => select(''), 'pb-symbol-none');
+    const outside = (e) => {
+      if (!wrap.contains(e.target) && !popup?.contains(e.target)) close();
+    };
+    const escape = (e) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      e.stopPropagation();
+      close(true);
+    };
+    const scope = app?.keymap ? new Scope() : null;
+    if (scope) {
+      scope.register([], 'Escape', (e) => {
+        escape(e);
+        return false;
+      });
+      app.keymap.pushScope(scope);
+    }
+    popup.onkeydown = (e) => {
+      escape(e);
+      if (!popup || e.target === entry) return;
+      const choices = [...grid.children],
+        i = choices.indexOf(doc.activeElement);
+      const delta = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: 5, ArrowUp: -5 }[e.key];
+      if (delta !== undefined) {
+        e.preventDefault();
+        choices[(Math.max(0, i) + delta + choices.length) % choices.length]?.focus();
+      }
+    };
+    const observer = new MutationObserver(() => {
+      if (!trigger.isConnected) close();
+    });
+    observer.observe(doc.body, { childList: true, subtree: true });
+    doc.addEventListener('pointerdown', outside, true);
+    cleanup = () => {
+      doc.removeEventListener('pointerdown', outside, true);
+      observer.disconnect();
+      if (scope) app.keymap.popScope(scope);
+    };
+    draw(!!column.icon && !/^[a-z][a-z0-9-]*$/.test(column.icon));
+    (grid.querySelector('[aria-pressed="true"]') || grid.firstElementChild)?.focus();
+  }
+  wrap._dispose = () => close();
+  return trigger;
+}
+function columnColors(parent, column, onChange) {
+  const colors = ['#9ba8c4', '#a99bea', '#83aa96', '#c5a374', '#c28ea7', '#7baabd'];
+  const palette = el(parent, 'div', 'pb-color-palette');
+  const paint = () =>
+    palette
+      .querySelectorAll('[data-color]')
+      .forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.color === column.color)));
+  for (const value of colors) {
+    const swatch = button(
+      palette,
+      '',
+      () => {
+        column.color = value;
+        custom.value = value;
+        paint();
+        onChange();
+      },
+      'pb-color-swatch',
+    );
+    swatch.style.setProperty('--swatch', value);
+    swatch.dataset.color = value;
+    swatch.setAttribute('aria-label', 'Цвет ' + value);
+  }
+  const custom = el(palette, 'input', 'pb-color-custom');
+  custom.type = 'color';
+  custom.value = column.color;
+  custom.setAttribute('aria-label', 'Свой цвет');
+  custom.oninput = () => {
+    column.color = custom.value;
+    paint();
+    onChange();
+  };
+  paint();
+  return palette;
+}
+class BoardEditModal extends Modal {
+  constructor(plugin, file) {
     super(plugin.app);
     this.plugin = plugin;
     this.file = file;
-    this.focusColumn = focusColumn;
   }
   async onOpen() {
     this.modalEl.addClass('pb-config-modal');
@@ -2221,234 +2410,244 @@ class BoardSettingsModal extends Modal {
     try {
       this.original = await this.app.vault.read(this.file);
       this.board = B.parseBoard(this.original);
-      this.tasks = (await this.plugin.tasks()).filter((t) => t.board === this.board.id);
       this.render();
     } catch (e) {
       el(this.contentEl, 'p', 'pb-error', errorMessage(e));
     }
   }
-  render() {
-    this.contentEl.querySelectorAll('.pb-picker-wrap').forEach((node) => node._dispose?.());
-    this.focusInput = null;
-    this.contentEl.replaceChildren();
-    el(this.contentEl, 'h2', '', this.file.basename);
-    const sections = el(this.contentEl, 'div', 'pb-config-sections');
-    const columnHeader = el(sections, 'div', 'pb-config-section-title');
-    el(columnHeader, 'h3', '', 'Столбцы');
-    button(
-      columnHeader,
-      '+ Столбец',
-      () => {
-        if (this.board.columns.length >= 30) return;
-        const c = {
-          value: crypto.randomUUID(),
-          label: 'Новый столбец',
-          kind: 'todo',
-          color: '#9992dc',
-          opacity: 0.08,
-          icon: '',
-        };
-        this.board.columns.push(c);
-        this.focusColumn = c.value;
-        this.render();
-      },
-      'pb-quiet',
+  actions(label = 'Сохранить') {
+    this.error = el(this.contentEl, 'div', 'pb-error');
+    this.error.setAttribute('role', 'alert');
+    const actions = el(this.contentEl, 'div', 'pb-config-actions');
+    button(actions, 'Отмена', () => this.close());
+    this.saveButton = button(actions, label, () => this.save(), 'pb-new');
+  }
+  async save() {
+    if (this.saving || this.removing) return false;
+    this.saving = true;
+    this.onClose();
+    const controls = [...this.contentEl.querySelectorAll('button,input,textarea,select')].map(
+      (node) => [node, node.disabled],
     );
-    const list = el(sections, 'div', 'pb-config-columns');
+    controls.forEach(([node]) => {
+      node.disabled = true;
+    });
+    this.saveButton.disabled = true;
+    try {
+      const next = B.normalizeBoard(this.board);
+      const previous = B.parseBoard(this.original);
+      const removed = previous.columns.filter(
+        (c) => !next.columns.some((n) => n.value === c.value),
+      );
+      if (removed.length) {
+        const tasks = (await this.plugin.tasks()).filter((t) => t.board === next.id);
+        if (removed.some((c) => tasks.some((t) => t.status === c.value)))
+          throw new Error(
+            'В столбце есть задачи, включая архив. Сначала перенесите их в другой столбец.',
+          );
+      }
+      await this.plugin.boards.save(this.file, next, this.original);
+      this.plugin.refresh();
+      this.close();
+      return true;
+    } catch (e) {
+      this.error.textContent = errorMessage(e);
+      return false;
+    } finally {
+      this.saving = false;
+      controls.forEach(([node, disabled]) => {
+        node.disabled = disabled;
+      });
+      this.saveButton.disabled = false;
+    }
+  }
+  onClose() {
+    this.contentEl.querySelectorAll('.pb-symbol-wrap').forEach((n) => n._dispose?.());
+  }
+}
+class AddColumnModal extends BoardEditModal {
+  render() {
+    this.modalEl.addClass('pb-add-column-modal');
+    el(this.contentEl, 'h2', '', 'Новый столбец');
+    const form = el(this.contentEl, 'form', 'pb-config-form');
+    this.column = {
+      value: crypto.randomUUID(),
+      label: '',
+      kind: 'active',
+      color: '#a99bea',
+      opacity: 0.06,
+      icon: '',
+    };
+    const preview = el(form, 'div', 'pb-new-column-preview');
+    const paint = () => {
+      preview.style.background = tint(this.column.color, this.column.opacity);
+    };
+    symbolPicker(preview, this.column, paint, this.app);
+    const name = el(preview, 'input', 'pb-config-column-name');
+    name.placeholder = 'Название столбца';
+    name.setAttribute('aria-label', 'Название столбца');
+    name.oninput = () => {
+      this.column.label = name.value;
+    };
+    columnColors(form, this.column, paint);
+    paint();
+    this.actions('Добавить');
+    form.onsubmit = (e) => {
+      e.preventDefault();
+      this.save();
+    };
+    name.focus();
+  }
+  async save() {
+    if (this.saving) return false;
+    if (!this.column.label.trim()) {
+      this.error.textContent = 'Введите название столбца.';
+      return false;
+    }
+    if (
+      this.board.columns.length >= 30 &&
+      !this.board.columns.some((c) => c.value === this.column.value)
+    ) {
+      this.error.textContent = 'На доске уже 30 столбцов.';
+      return false;
+    }
+    // Keep the pending column only once when retrying after an error.
+    if (!this.board.columns.some((c) => c.value === this.column.value))
+      this.board.columns.push(this.column);
+    const saved = await super.save();
+    if (saved) {
+      for (const leaf of this.plugin.boardLeaves?.() || []) {
+        const view = leaf.view;
+        if (view.file?.path !== this.file.path) continue;
+        await view.refresh();
+        const column = view.columns?.get(this.column.value);
+        column?.col.scrollIntoView({ block: 'nearest', inline: 'end', behavior: 'smooth' });
+        if (column) {
+          column.col.classList.add('pb-new-task');
+          const timer = setTimeout(() => column.col.classList.remove('pb-new-task'), 4000);
+          view.register(() => clearTimeout(timer));
+        }
+      }
+    }
+    return saved;
+  }
+}
+class BoardSettingsModal extends BoardEditModal {
+  constructor(plugin, file, focusColumn) {
+    super(plugin, file);
+    this.focusColumn = focusColumn;
+  }
+  render() {
+    this.onClose();
+    this.contentEl.replaceChildren();
+    el(this.contentEl, 'h2', '', 'Столбцы');
+    const list = el(this.contentEl, 'div', 'pb-config-columns');
+    let focusInput;
     for (const [index, c] of this.board.columns.entries()) {
       const row = el(list, 'div', 'pb-config-column');
-      row.style.background = tint(c.color, c.opacity);
+      const paint = () => {
+        row.style.background = tint(c.color, c.opacity);
+      };
       const top = el(row, 'div', 'pb-config-column-top');
-      const mark = el(top, 'span', 'pb-status-icon');
-      statusMark(mark, c.icon);
+      symbolPicker(top, c, paint, this.app);
       const title = el(top, 'input', 'pb-config-column-name');
       title.value = c.label;
       title.setAttribute('aria-label', 'Название столбца ' + (index + 1));
       title.oninput = () => {
         c.label = title.value;
       };
-      const up = icon(top, 'arrow-up', 'Передвинуть столбец вверх', () => {
-        [this.board.columns[index - 1], this.board.columns[index]] = [
-          c,
-          this.board.columns[index - 1],
-        ];
-        this.focusColumn = c.value;
-        this.render();
-      });
-      up.disabled = index === 0;
-      const down = icon(top, 'arrow-down', 'Передвинуть столбец вниз', () => {
-        [this.board.columns[index + 1], this.board.columns[index]] = [
-          c,
-          this.board.columns[index + 1],
-        ];
-        this.focusColumn = c.value;
-        this.render();
-      });
-      down.disabled = index === this.board.columns.length - 1;
-      const remove = icon(top, 'trash-2', 'Удалить столбец ' + c.label, () => {
-        const count = this.tasks.filter((t) => t.status === c.value).length;
-        if (count) {
-          this.error.textContent = `В столбце ${count} задач, включая архив. Сначала перенесите их в другой столбец.`;
-          return;
+      const remove = icon(top, 'trash-2', 'Удалить столбец ' + c.label, async () => {
+        if (this.saving || this.removing) return;
+        this.removing = true;
+        try {
+          const tasks = await this.plugin.tasks();
+          const count = tasks.filter(
+            (t) => t.board === this.board.id && t.status === c.value,
+          ).length;
+          if (count) {
+            this.error.textContent = `В «${c.label}» есть задачи: ${count}, включая архив. Сначала перенесите их в другой столбец.`;
+            return;
+          }
+          this.board.columns = this.board.columns.filter((x) => x.value !== c.value);
+          this.focusColumn = null;
+          this.render();
+        } catch (e) {
+          this.error.textContent = errorMessage(e);
+        } finally {
+          this.removing = false;
         }
-        this.board.columns.splice(index, 1);
-        this.render();
       });
       remove.classList.add('pb-trash');
       remove.disabled = this.board.columns.length === 1;
-      const controls = el(row, 'div', 'pb-config-column-controls');
-      const color = configInput(controls, 'Цвет', c.color, 'color');
+      const controls = el(row, 'div', 'pb-column-appearance');
+      const color = el(controls, 'input', 'pb-color-custom');
+      color.type = 'color';
+      color.value = c.color;
+      color.setAttribute('aria-label', 'Цвет столбца ' + c.label);
       color.oninput = () => {
         c.color = color.value;
-        row.style.background = tint(c.color, c.opacity);
+        paint();
       };
-      const opacity = configInput(
-        controls,
-        'Насыщенность фона',
-        Math.round(c.opacity * 100),
-        'range',
-      );
-      opacity.min = '0';
-      opacity.max = '100';
-      opacity.step = '1';
-      const amount = el(opacity.parentElement, 'output', '', `${Math.round(c.opacity * 100)}%`);
-      opacity.oninput = () => {
-        c.opacity = Number(opacity.value) / 100;
-        amount.textContent = opacity.value + '%';
-        row.style.background = tint(c.color, c.opacity);
+      const label = el(controls, 'label', 'pb-opacity-control');
+      el(label, 'span', '', 'Прозрачность');
+      const range = el(label, 'input', 'pb-opacity-range');
+      range.type = 'range';
+      range.min = '0';
+      range.max = '100';
+      range.step = '1';
+      range.value = String(Math.round((1 - c.opacity) * 100));
+      range.setAttribute('aria-label', 'Прозрачность фона ' + c.label);
+      const amount = el(label, 'output', '', range.value + '%');
+      range.oninput = () => {
+        c.opacity = (100 - Number(range.value)) / 100;
+        amount.textContent = range.value + '%';
+        paint();
       };
-      const iconField = el(controls, 'div', 'pb-config-field');
-      el(iconField, 'span', '', 'Значок');
-      const iconRow = el(iconField, 'div', 'pb-config-icon-row');
-      const iconButton = picker(
-        iconRow,
-        c.icon ? (/^[a-z-]+$/.test(c.icon) ? 'Иконка' : 'Эмодзи') : 'Нет',
-        'Вид значка',
-        [
-          { value: '', label: 'Без значка' },
-          { value: 'inbox', label: 'Входящие', icon: 'inbox' },
-          { value: 'circle-dashed', label: 'В процессе', icon: 'circle-dashed' },
-          { value: 'circle-check', label: 'Готово', icon: 'circle-check' },
-          { value: 'clock', label: 'Ожидание', icon: 'clock' },
-          { value: 'star', label: 'Звезда', icon: 'star' },
-        ],
-        (item) => {
-          c.icon = item.value;
-          this.focusColumn = c.value;
-          this.render();
-        },
-        'pb-config-icon',
-      );
-      const emoji = el(iconRow, 'input', 'pb-config-emoji');
-      emoji.placeholder = '😊';
-      emoji.value = /^[a-z-]+$/.test(c.icon) ? '' : c.icon;
-      emoji.setAttribute('aria-label', 'Эмодзи для ' + c.label);
-      emoji.oninput = () => {
-        c.icon = emoji.value.trim();
-        iconButton.querySelector('.pb-picker-label').textContent = c.icon ? 'Эмодзи' : 'Нет';
-        mark.replaceChildren();
-        statusMark(mark, c.icon);
-      };
-      const kindField = el(controls, 'div', 'pb-config-field');
-      el(kindField, 'span', '', 'Тип');
-      const kinds = [
-        { value: 'todo', label: 'Ожидает' },
-        { value: 'active', label: 'В работе' },
-        { value: 'done', label: 'Завершено' },
-      ];
-      picker(
-        kindField,
-        kinds.find((k) => k.value === c.kind).label,
-        'Тип столбца ' + c.label,
-        kinds,
-        (item) => {
-          const original = B.parseBoard(this.original).columns.find((x) => x.value === c.value);
-          if (
-            original &&
-            original.kind !== item.value &&
-            this.tasks.some((t) => t.status === c.value)
-          ) {
-            this.error.textContent =
-              'Чтобы изменить тип, сначала перенесите задачи из этого столбца.';
-            return;
-          }
-          c.kind = item.value;
-          this.focusColumn = c.value;
-          this.render();
-        },
-        'pb-config-kind',
-      );
-      if (this.focusColumn === c.value) this.focusInput = title;
+      paint();
+      if (this.focusColumn === c.value) focusInput = title;
     }
-    const storage = el(sections, 'details', 'pb-config-storage');
-    el(storage, 'summary', '', 'Хранение');
+    this.actions();
+    focusInput?.focus();
+  }
+}
+class BoardStorageModal extends BoardEditModal {
+  render() {
+    this.modalEl.addClass('pb-storage-modal');
+    el(this.contentEl, 'h2', '', 'Папки доски');
+    const form = el(this.contentEl, 'form', 'pb-config-form');
     for (const [key, label] of [
-      ['tasksFolder', 'Папка новых задач'],
-      ['attachmentsFolder', 'Папка вложений'],
+      ['tasksFolder', 'Новые задачи'],
+      ['attachmentsFolder', 'Вложения'],
     ]) {
-      const input = configInput(storage, label, this.board[key] ?? '');
-      input.placeholder = this.plugin.settings[key] || 'Корень хранилища';
-      const inherit = el(storage, 'label', 'pb-config-inherit');
-      const box = el(inherit, 'input');
-      box.type = 'checkbox';
-      box.checked = this.board[key] === undefined;
-      el(inherit, 'span', '', 'Из настроек PikoBoard');
-      input.disabled = box.checked;
-      box.onchange = () => {
-        input.disabled = box.checked;
-        if (box.checked) {
-          delete this.board[key];
-          input.value = '';
-          input.placeholder = this.plugin.settings[key] || 'Корень хранилища';
-        } else {
-          input.value = this.plugin.settings[key] || '';
-          input.placeholder = 'Корень хранилища';
-          this.board[key] = input.value.trim();
-        }
+      const group = el(form, 'div', 'pb-folder-setting');
+      const top = el(group, 'div', 'pb-folder-heading');
+      el(top, 'span', '', label);
+      const badge = el(top, 'span', 'pb-folder-origin');
+      const row = el(group, 'div', 'pb-folder-input');
+      const input = el(row, 'input', 'pb-config-input');
+      input.setAttribute('aria-label', label);
+      input.placeholder = 'Корень хранилища';
+      const reset = icon(row, 'undo-2', 'Вернуть общую папку', () => {
+        delete this.board[key];
+        paint();
+      });
+      const paint = () => {
+        input.value = this.board[key] ?? this.plugin.settings[key] ?? '';
+        badge.textContent = this.board[key] === undefined ? 'Общая папка' : 'Для этой доски';
+        reset.hidden = this.board[key] === undefined;
       };
       input.oninput = () => {
         this.board[key] = input.value.trim();
+        badge.textContent = 'Для этой доски';
+        reset.hidden = false;
       };
+      paint();
     }
-    this.error = el(this.contentEl, 'div', 'pb-error');
-    this.error.setAttribute('role', 'alert');
-    const actions = el(this.contentEl, 'div', 'pb-config-actions');
-    button(actions, 'Отмена', () => this.close());
-    const save = button(
-      actions,
-      'Сохранить',
-      async () => {
-        if (save.disabled) return;
-        save.disabled = true;
-        try {
-          const next = B.normalizeBoard(this.board);
-          // Recheck membership at save time: a task could be added while the dialog was open.
-          const tasks = (await this.plugin.tasks()).filter((t) => t.board === next.id);
-          const previous = B.parseBoard(this.original);
-          for (const c of previous.columns) {
-            const replacement = next.columns.find((x) => x.value === c.value);
-            if (
-              (!replacement || replacement.kind !== c.kind) &&
-              tasks.some((t) => t.status === c.value)
-            )
-              throw new Error(
-                'В изменённом столбце появились задачи. Перенесите их перед удалением или сменой типа.',
-              );
-          }
-          await this.plugin.boards.save(this.file, next, this.original);
-          this.plugin.refresh();
-          this.close();
-        } catch (e) {
-          this.error.textContent = errorMessage(e);
-          save.disabled = false;
-        }
-      },
-      'pb-new',
-    );
-    this.focusInput?.focus();
-  }
-  onClose() {
-    this.contentEl.querySelectorAll('.pb-picker-wrap').forEach((node) => node._dispose?.());
+    this.actions();
+    form.onsubmit = (e) => {
+      e.preventDefault();
+      this.save();
+    };
   }
 }
 
@@ -3249,6 +3448,7 @@ const BoardBase = (Base) =>
       await this.refresh();
     }
     async onUnloadFile() {
+      this.cancelColumnDrag?.();
       this.boardConfig = null;
       this.boardError = '';
     }
@@ -3279,6 +3479,7 @@ const BoardBase = (Base) =>
       await this.refresh();
     }
     async onClose() {
+      this.cancelColumnDrag?.();
       this.seq++;
       for (const c of this.cards.values()) this.disposeCard(c);
       this.toolbar?.querySelectorAll('.pb-picker-wrap').forEach((w) => w._dispose?.());
@@ -3399,7 +3600,7 @@ const BoardBase = (Base) =>
       return known ? 'open' : '__unknown__';
     }
     async refresh() {
-      if (!this.root?.isConnected || this.dragPath || this.moving) return;
+      if (!this.root?.isConnected || this.dragPath || this.dragColumn || this.moving) return;
       const seq = ++this.seq;
       if (this.file) {
         try {
@@ -3485,7 +3686,8 @@ const BoardBase = (Base) =>
                   ]
                 : []),
             ];
-        this.area.style.gridTemplateColumns = `repeat(${columns.length}, minmax(min(280px, 85vw), 1fr))`;
+        const editable = this.boardConfig && !this.archive;
+        this.area.style.gridTemplateColumns = `repeat(${columns.length}, minmax(min(260px, 85vw), 1fr))${editable ? ' 44px' : ''}`;
         for (const s of columns) {
           const col = el(this.area, 'section', 'pb-column'),
             header = el(col, 'header', 'pb-column-header');
@@ -3498,13 +3700,21 @@ const BoardBase = (Base) =>
           el(header, 'span', '', s.label);
           const count = el(header, 'small'),
             list = el(col, 'div', 'pb-card-list');
-          this.columns.set(s.value, { col, count, list });
+          this.columns.set(s.value, { col, header, count, list });
+          if (editable && s.value !== '__unknown__') this.bindColumnDrag(header, col, s.value);
           if (this.boardConfig && !this.archive && s.value !== '__unknown__')
             icon(header, 'ellipsis', 'Настроить столбец ' + s.label, () =>
               new BoardSettingsModal(this.plugin, this.file, s.value).open(),
             );
           if (!this.archive && s.value !== '__unknown__')
             button(col, '+ Задача', () => this.plugin.createTask(s.value, this), 'pb-add-task');
+        }
+        if (editable) {
+          const add = icon(this.area, 'plus', 'Добавить столбец', () =>
+            new AddColumnModal(this.plugin, this.file).open(),
+          );
+          add.classList.add('pb-add-column');
+          add.disabled = this.boardConfig.columns.length >= 30;
         }
       }
       const visiblePaths = new Set(visible.map((t) => t.path));
@@ -3630,6 +3840,11 @@ const BoardBase = (Base) =>
                     label: 'Настройки доски',
                     icon: 'settings-2',
                     action: () => new BoardSettingsModal(this.plugin, this.file).open(),
+                  },
+                  {
+                    label: 'Папки доски',
+                    icon: 'folder',
+                    action: () => new BoardStorageModal(this.plugin, this.file).open(),
                   },
                   {
                     label: 'Добавить существующую задачу',
@@ -3834,6 +4049,151 @@ const BoardBase = (Base) =>
       c.composer = new JournalComposer(this.plugin, file, c.journal);
       return c;
     }
+    bindColumnDrag(header, node, value) {
+      header.classList.add('pb-column-handle');
+      header.tabIndex = 0;
+      header.setAttribute(
+        'aria-label',
+        'Передвинуть столбец ' + this.boardColumns().find((c) => c.value === value)?.label,
+      );
+      header.onkeydown = (event) => {
+        if (
+          !event.altKey ||
+          !['ArrowLeft', 'ArrowRight'].includes(event.key) ||
+          event.target !== header
+        )
+          return;
+        event.preventDefault();
+        event.stopPropagation();
+        const columns = this.boardColumns(),
+          index = columns.findIndex((c) => c.value === value);
+        const adjacent = columns[index + (event.key === 'ArrowRight' ? 1 : -1)];
+        if (adjacent) this.moveColumn(value, adjacent.value, event.key === 'ArrowRight');
+      };
+      header.onpointerdown = (event) => {
+        if (
+          event.button !== 0 ||
+          event.target.closest('button,input') ||
+          this.moving ||
+          this.dragPath
+        )
+          return;
+        this.cancelColumnDrag?.();
+        const doc = header.ownerDocument,
+          win = doc.defaultView;
+        const startX = event.clientX,
+          startY = event.clientY;
+        let dragging = false,
+          target = null,
+          frame = null,
+          pointerX = startX;
+        const clear = () =>
+          this.area
+            .querySelectorAll('.pb-column-before,.pb-column-after')
+            .forEach((n) => n.classList.remove('pb-column-before', 'pb-column-after'));
+        const locate = () => {
+          clear();
+          target = null;
+          const columns = [...this.columns].filter(([id]) => id !== value && id !== '__unknown__');
+          const before = columns.find(([, c]) => {
+            const r = c.col.getBoundingClientRect();
+            return pointerX < r.left + r.width / 2;
+          });
+          const found = before || columns.at(-1);
+          if (found) {
+            target = { value: found[0], after: !before };
+            found[1].col.classList.add(before ? 'pb-column-before' : 'pb-column-after');
+          }
+        };
+        const scroll = () => {
+          if (!dragging) return;
+          const r = this.area.getBoundingClientRect();
+          const delta = pointerX > r.right - 48 ? 10 : pointerX < r.left + 48 ? -10 : 0;
+          if (delta) {
+            this.area.scrollLeft += delta;
+            locate();
+          }
+          frame = win.requestAnimationFrame(scroll);
+        };
+        const move = (e) => {
+          if (!dragging && Math.hypot(e.clientX - startX, e.clientY - startY) < 6) return;
+          if (!dragging) {
+            dragging = true;
+            this.dragColumn = value;
+            header.setPointerCapture(event.pointerId);
+            node.classList.add('pb-column-dragging');
+            scroll();
+          }
+          e.preventDefault();
+          pointerX = e.clientX;
+          node.style.transform = `translateX(${e.clientX - startX}px)`;
+          locate();
+        };
+        const finish = (e) => {
+          doc.removeEventListener('pointermove', move);
+          doc.removeEventListener('pointerup', finish);
+          doc.removeEventListener('pointercancel', finish);
+          doc.removeEventListener('keydown', key, true);
+          win.removeEventListener('blur', cancel);
+          if (frame !== null) win.cancelAnimationFrame(frame);
+          this.cancelColumnDrag = null;
+          if (!dragging) return;
+          this.dragColumn = null;
+          node.classList.remove('pb-column-dragging');
+          node.style.transform = '';
+          clear();
+          if (header.hasPointerCapture(event.pointerId))
+            header.releasePointerCapture(event.pointerId);
+          if (e?.type === 'pointerup' && target) this.moveColumn(value, target.value, target.after);
+          else this.refresh();
+        };
+        const cancel = () => finish();
+        const key = (e) => {
+          if (e.key === 'Escape' && dragging) {
+            e.preventDefault();
+            e.stopPropagation();
+            finish();
+          }
+        };
+        this.cancelColumnDrag = cancel;
+        doc.addEventListener('pointermove', move);
+        doc.addEventListener('pointerup', finish);
+        doc.addEventListener('pointercancel', finish);
+        doc.addEventListener('keydown', key, true);
+        win.addEventListener('blur', cancel);
+      };
+    }
+    async moveColumn(value, anchor, after = false) {
+      if (!this.file || !this.boardConfig || this.archive || this.moving || value === anchor)
+        return false;
+      const columns = this.boardConfig.columns;
+      if (!columns.some((c) => c.value === value) || !columns.some((c) => c.value === anchor))
+        return false;
+      this.moving = true;
+      try {
+        const expected = JSON.stringify(this.boardConfig);
+        const source = await this.app.vault.read(this.file),
+          board = B.parseBoard(source);
+        if (JSON.stringify(board) !== expected)
+          throw new Error('Доска уже изменена. Повторите перемещение.');
+        const moved = board.columns.find((c) => c.value === value);
+        board.columns = board.columns.filter((c) => c.value !== value);
+        const index = board.columns.findIndex((c) => c.value === anchor) + (after ? 1 : 0);
+        board.columns.splice(index, 0, moved);
+        if (board.columns.every((c, i) => c.value === columns[i].value)) return true;
+        const result = await this.plugin.boards.save(this.file, board, source);
+        this.boardConfig = result.board;
+        return true;
+      } catch (e) {
+        new Notice(errorMessage(e));
+        return false;
+      } finally {
+        this.moving = false;
+        await this.refresh();
+        this.plugin.refresh();
+        this.columns?.get(value)?.header?.focus();
+      }
+    }
     clearDrop() {
       this.area
         .querySelectorAll('.pb-drop,.pb-insert-before,.pb-insert-after')
@@ -3864,10 +4224,7 @@ const BoardBase = (Base) =>
             currentKind === kind
               ? task.status
               : this.plugin.columnsFor(task).find((s) => s.kind === kind)?.value;
-          if (!status)
-            throw new Error(
-              'На этой доске нет столбца такого типа. Настройте столбцы на самой доске.',
-            );
+          if (!status) throw new Error('Перенесите задачу в нужный столбец на её доске.');
         }
         if (task?.status !== status) await this.plugin.patch(file, { status });
         const old = this.plugin.data.order;
