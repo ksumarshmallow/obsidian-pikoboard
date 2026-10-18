@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const C = require('../core');
+const B = require('../board-store');
 const source = fs.readFileSync(path.join(__dirname, '../plugin.js'), 'utf8');
 const deferred = () => {
   let resolve;
@@ -123,17 +124,20 @@ function fixture(
     Plugin: base,
     PluginSettingTab: base,
     ItemView: base,
+    FileView: base,
     Modal: base,
     FuzzySuggestModal: base,
     Component,
     TFile: class {},
     MarkdownRenderer: { render },
-    setIcon() {},
+    setIcon(node, name) {
+      node.icon = name;
+    },
     normalizePath: (x) => x,
   };
   const document = { createElement: (tag) => new Element(tag), activeElement: null };
   const scope = {
-    require: (name) => (name === 'obsidian' ? obs : C),
+    require: (name) => (name === 'obsidian' ? obs : require(name.replace('./', '../'))),
     module: { exports: {} },
     console,
     document,
@@ -142,7 +146,7 @@ function fixture(
     crypto: require('node:crypto').webcrypto,
   };
   vm.runInNewContext(source + '\nmodule.exports={PikoBoard,BoardView,nextStep};', scope);
-  return { ...scope.module.exports, components, document };
+  return { ...scope.module.exports, components, document, obs };
 }
 function boardFixture(tasks) {
   const f = fixture(),
@@ -157,6 +161,8 @@ function boardFixture(tasks) {
   plugin.note = async () => ({ nextAction: '' });
   plugin.journal = () => ({ syncNext() {} });
   plugin.disposeHistory = () => {};
+  plugin.columnsFor = () => B.DEFAULT_COLUMNS;
+  plugin.boards = { load: async () => ({ board: view.boardConfig }) };
   const view = new f.BoardView(null, plugin);
   view.root = new Element();
   view.root.connected = true;
@@ -166,7 +172,7 @@ function boardFixture(tasks) {
   view.root.append(view.toolbar, view.domains, view.area);
   view.renderToolbar = f.BoardView.prototype.renderToolbar;
   view.makeCard = (task) => ({
-    node: new Element(),
+    node: Object.assign(new Element(), { dataset: { path: task.path } }),
     title: new Element(),
     meta: new Element(),
     feed: new Element(),
@@ -192,7 +198,9 @@ test('focus includes every active in-progress task despite saved domain/tag filt
   view.recent.add('Done');
   await view.refresh();
   assert.deepEqual([...view.cards.keys()], ['A', 'B', 'Unassigned']);
-  assert.equal(view.columns.size, 1);
+  assert.deepEqual([...view.columns.keys()], ['open', 'in-progress', 'done']);
+  assert.equal(view.columns.get('open').count.textContent, '0');
+  assert.equal(view.columns.get('done').count.textContent, '0');
   assert.equal(view.columns.get('in-progress').count.textContent, '3');
   assert.equal(view.domains.hidden, true);
   assert.equal(view.toolbar.textContent.includes('В работе · 3'), true);
@@ -215,7 +223,7 @@ test('focus includes every active in-progress task despite saved domain/tag filt
   );
 });
 
-test('grid drop targets use both axes, exclude the dragged card, and keep vertical board ordering', () => {
+test('drop targets use vertical card order in every filter and exclude the dragged card', () => {
   const { BoardView } = fixture(),
     view = Object.create(BoardView.prototype);
   view.mode = 'focus';
@@ -237,10 +245,10 @@ test('grid drop targets use both axes, exclude the dragged card, and keep vertic
     drag = node('drag', 120, 100),
     list = { children: [first, second, third, drag] };
   let target = view.dropTarget(list, 30, 130);
-  assert.equal(target.anchor, 'second');
+  assert.equal(target.anchor, 'first');
   assert.equal(target.after, false);
-  target = view.dropTarget(list, 30, 210);
-  assert.equal(target.anchor, 'second');
+  target = view.dropTarget(list, 210, 30);
+  assert.equal(target.anchor, 'third');
   assert.equal(target.after, true);
   target = view.dropTarget(list, 125, 20);
   assert.equal(target.anchor, 'third');
@@ -392,7 +400,7 @@ test('next-step rendering ignores late old Markdown and disposes its component',
   assert.equal(f.components[1].loaded, false);
 });
 
-test('compact view keeps interactive cards in status columns, project filtering and normal order', async () => {
+test('the single board layout keeps interactive cards in status columns, project filtering and normal order', async () => {
   const tasks = [
     { path: 'Next', status: 'open', projects: ['[[Projects/A]]'], visibleTags: [] },
     { path: 'Working', status: 'in-progress', projects: ['[[Projects/A]]'], visibleTags: [] },
@@ -407,7 +415,7 @@ test('compact view keeps interactive cards in status columns, project filtering 
     },
   ];
   const { view } = boardFixture(tasks);
-  view.mode = 'overview';
+  view.mode = 'board';
   view.filters.project = 'Projects/A';
   await view.refresh();
   assert.deepEqual([...view.columns.keys()], ['open', 'in-progress', 'done']);
@@ -425,12 +433,179 @@ test('compact view keeps interactive cards in status columns, project filtering 
     assert.ok(card.feed);
     assert.ok(card.journal);
   }
-  assert.equal(view.toolbar.textContent.includes('Компактно'), true);
+  assert.equal(view.toolbar.textContent.includes('Компактно'), false);
+  assert.equal(view.toolbar.textContent.includes('Доска'), false);
+  assert.equal(view.area.classList.contains('pb-overview'), true);
   view.filters.project = '';
   await view.refresh();
   assert.equal(view.columns.get('open').count.textContent, '2');
   assert.equal(view.cards.has('Archived'), false);
   view.mode = 'board';
   await view.refresh();
-  assert.deepEqual([...view.cards.keys()], ['Next', 'Other', 'Working', 'Finished']);
+  assert.deepEqual(
+    view.columns.get('open').list.children.map((node) => node.dataset.path),
+    ['Next', 'Other'],
+  );
+  assert.equal(view.cards.size, 4);
+});
+
+const customColumns = () => [
+  ...B.DEFAULT_COLUMNS,
+  {
+    value: 'waiting',
+    label: 'Waiting',
+    kind: 'active',
+    color: '#123456',
+    opacity: 0.12,
+    icon: '⏳',
+  },
+];
+const task = (path, status, board = '') => ({
+  path,
+  status,
+  board,
+  projects: [],
+  visibleTags: [],
+  isActive: ['in-progress', 'waiting'].includes(status),
+  isCompleted: status === 'done',
+});
+
+test('a named board isolates its tasks and renders its exact columns, colors, emoji and no-icon option', async () => {
+  const tasks = [
+    task('A', 'open', 'work'),
+    task('Waiting', 'waiting', 'work'),
+    task('Other', 'waiting', 'home'),
+    task('Loose', 'open'),
+  ];
+  const { view } = boardFixture(tasks);
+  view.file = { path: 'Projects/Work.pikoboard', basename: 'Work' };
+  view.boardConfig = { id: 'work', columns: customColumns() };
+  view.boardConfig.columns[0] = { ...view.boardConfig.columns[0], icon: '', opacity: 0 };
+  await view.refresh();
+  assert.deepEqual([...view.cards.keys()], ['A', 'Waiting']);
+  assert.deepEqual([...view.columns.keys()], ['open', 'in-progress', 'done', 'waiting']);
+  assert.equal(view.columns.get('waiting').col.style.background, 'rgba(18,52,86,0.12)');
+  assert.equal(
+    view.columns.get('waiting').col.querySelectorAll('.pb-status-icon')[0].textContent,
+    '⏳',
+  );
+  assert.equal(view.columns.get('open').col.querySelectorAll('.pb-status-icon').length, 0);
+  assert.equal(view.columns.get('open').col.style.background, 'rgba(155,168,196,0)');
+  assert.equal(view.getDisplayText(), 'Work');
+});
+
+test('unknown task status remains visible in its own recovery column instead of becoming backlog', async () => {
+  const { view } = boardFixture([
+    task('Known', 'open', 'work'),
+    task('Lost status', 'cancelled', 'work'),
+  ]);
+  view.file = { path: 'Work.pikoboard', basename: 'Work' };
+  view.boardConfig = { id: 'work', columns: customColumns() };
+  await view.refresh();
+  const unknown = view.columns.get('__unknown__');
+  assert.ok(unknown);
+  assert.equal(view.cards.get('Lost status').node.parentNode, unknown.list);
+  assert.equal(view.columns.get('open').count.textContent, '1');
+  assert.equal(unknown.count.textContent, '1');
+  assert.equal(unknown.col.querySelectorAll('.pb-add-task').length, 0);
+});
+
+test('all-tasks focus uses semantic roles from custom boards and keeps three vertical status columns', async () => {
+  const tasks = [
+    task('Waiting', 'waiting', 'work'),
+    task('Standard', 'in-progress'),
+    task('Done', 'done', 'work'),
+    task('Later', 'open', 'work'),
+  ];
+  const { view, plugin } = boardFixture(tasks);
+  plugin.columnsFor = () => customColumns();
+  view.mode = 'focus';
+  await view.refresh();
+  assert.deepEqual([...view.columns.keys()], ['open', 'in-progress', 'done']);
+  assert.deepEqual([...view.cards.keys()], ['Waiting', 'Standard']);
+  assert.equal(view.columns.get('in-progress').count.textContent, '2');
+  assert.equal(view.columns.get('open').count.textContent, '0');
+  assert.equal(view.columns.get('done').count.textContent, '0');
+});
+
+test('unreadable board config fails closed and recovers without leaking tasks from other boards', async () => {
+  const { view, plugin } = boardFixture([
+    task('Mine', 'open', 'work'),
+    task('Other', 'open', 'home'),
+  ]);
+  view.file = { path: 'Work.pikoboard', basename: 'Work' };
+  const board = { id: 'work', columns: customColumns() };
+  view.boardConfig = board;
+  await view.refresh();
+  plugin.boards.load = async () => {
+    throw new Error('Invalid board');
+  };
+  await view.refresh();
+  assert.equal(view.cards.size, 0);
+  assert.equal(view.area.textContent, 'Invalid board');
+  plugin.boards.load = async () => ({ board });
+  await view.refresh();
+  assert.deepEqual([...view.cards.keys()], ['Mine']);
+  assert.equal(view.cards.get('Mine').node.isConnected, true);
+});
+
+test('a slow earlier board read cannot replace newer columns or report a stale error', async () => {
+  for (const fail of [false, true]) {
+    const { view, plugin } = boardFixture([task('Task', 'waiting', 'work')]);
+    view.file = { path: 'Work.pikoboard', basename: 'Work' };
+    const old = deferred();
+    let calls = 0;
+    const newest = { id: 'work', columns: customColumns() };
+    plugin.boards.load = async () => {
+      if (++calls === 1) {
+        await old.promise;
+        if (fail) throw new Error('Old failure');
+        return { board: { id: 'work', columns: B.DEFAULT_COLUMNS } };
+      }
+      return { board: newest };
+    };
+    const pending = view.refresh();
+    await tick();
+    await view.refresh();
+    old.resolve();
+    await pending;
+    assert.deepEqual(view.boardConfig, newest);
+    assert.equal(view.boardError, '');
+    assert.equal(view.cards.get('Task').node.parentNode, view.columns.get('waiting').list);
+  }
+});
+
+test('dragging on all-tasks maps semantic target to the task own board and retains ordering', async () => {
+  const tasks = [task('First', 'waiting', 'work'), task('Second', 'released', 'work')];
+  const { view, plugin, obs } = boardFixture(tasks);
+  const columns = [
+    { value: 'later', kind: 'todo' },
+    { value: 'waiting', kind: 'active' },
+    { value: 'released', kind: 'done' },
+  ];
+  const files = new Map(
+    tasks.map((t) => [t.path, Object.assign(new obs.TFile(), { path: t.path })]),
+  );
+  view.app = { vault: { getAbstractFileByPath: (path) => files.get(path) } };
+  view.allTasks = tasks;
+  plugin.columnsFor = () => columns;
+  const changes = [];
+  plugin.patch = async (file, patch) => {
+    changes.push([file.path, patch.status]);
+  };
+  plugin.persist = async () => {};
+  plugin.refresh = () => {};
+  view.refresh = async () => {};
+  await view.moveCard('First', 'done', 'Second', true);
+  assert.deepEqual(changes, [['First', 'released']]);
+  assert.deepEqual([...plugin.data.order], ['Second', 'First']);
+  assert.equal(view.moving, false);
+  changes.length = 0;
+  await view.moveCard('First', 'in-progress', 'Second', false);
+  assert.deepEqual(
+    changes,
+    [],
+    'reordering within the aggregate active column retains its exact custom status',
+  );
+  assert.deepEqual([...plugin.data.order], ['First', 'Second']);
 });

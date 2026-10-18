@@ -16,12 +16,13 @@ function setup(next = '') {
     Plugin: class {},
     PluginSettingTab: class {},
     ItemView: class {},
+    FileView: class {},
     Modal: class {},
     FuzzySuggestModal: class {},
     Notice: class {},
   };
   const scope = {
-    require: (n) => (n === 'obsidian' ? obs : C),
+    require: (n) => (n === 'obsidian' ? obs : require(n.replace('./', '../'))),
     module: { exports: {} },
     console,
     setTimeout,

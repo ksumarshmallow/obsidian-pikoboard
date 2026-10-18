@@ -6,6 +6,7 @@ const {
   parseYaml,
   stringifyYaml,
   ItemView,
+  FileView,
   Modal,
   FuzzySuggestModal,
   Menu,
@@ -19,13 +20,22 @@ const {
 } = require('obsidian');
 const C = require('./core');
 const S = require('./task-store');
+const B = require('./board-store');
 const TYPE = 'pikoboard-view';
+const FILE_TYPE = 'pikoboard-file-view';
 const CONTEXT = { source: 'pikoboard' };
-const statuses = [
-  { value: 'open', label: 'backlog', cls: 'plan', icon: 'inbox' },
-  { value: 'in-progress', label: 'in progress', cls: 'work', icon: 'circle-dashed' },
-  { value: 'done', label: 'done', cls: 'done', icon: 'circle-check' },
-];
+const statuses = B.DEFAULT_COLUMNS;
+function statusMark(node, value) {
+  if (!value) return;
+  if (/^[a-z][a-z0-9-]*$/.test(value)) setIcon(node, value);
+  else node.textContent = value;
+}
+function tint(color, alpha) {
+  const hex = color.replace('#', '');
+  const parts = [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  return `rgba(${parts.join(',')},${alpha})`;
+}
+
 function el(parent, tag, cls, text) {
   const e = document.createElement(tag);
   if (cls) e.className = cls;
@@ -241,7 +251,7 @@ function picker(parent, label, aria, items, onChange, cls = '') {
       );
       if (i.icon) {
         const mark = el(b, 'span', 'pb-status-icon');
-        setIcon(mark, i.icon);
+        statusMark(mark, i.icon);
         mark.setAttribute('aria-hidden', 'true');
         b.prepend(mark);
       }
@@ -840,7 +850,7 @@ class JournalComposer {
         .setIcon('paperclip')
         .onClick(() =>
           this.plugin
-            .uploadMaterial((target) => this.appendLink(target, mode))
+            .uploadMaterial((target) => this.appendLink(target, mode), this.file)
             .catch((err) => this.model.fail(err)),
         ),
     );
@@ -939,6 +949,299 @@ function nextStep(parent, plugin, file, edit) {
   return wrap;
 }
 
+class CreateBoardModal extends Modal {
+  constructor(plugin, folder) {
+    super(plugin.app);
+    this.plugin = plugin;
+    this.folder = folder;
+  }
+  onOpen() {
+    this.modalEl.addClass('pb-config-modal');
+    this.contentEl.addClass('pikoboard');
+    el(this.contentEl, 'h2', '', 'Новая доска');
+    const form = el(this.contentEl, 'form', 'pb-config-form');
+    const name = configInput(form, 'Название', 'Моя доска');
+    const folder = configInput(form, 'Папка', this.folder === '/' ? '' : this.folder);
+    folder.placeholder = 'Корень хранилища';
+    const error = el(form, 'div', 'pb-error');
+    error.setAttribute('role', 'alert');
+    const actions = el(form, 'div', 'pb-config-actions');
+    button(actions, 'Отмена', () => this.close());
+    const save = button(actions, 'Создать доску', () => form.requestSubmit(), 'pb-new');
+    form.onsubmit = async (event) => {
+      event.preventDefault();
+      if (save.disabled) return;
+      save.disabled = true;
+      try {
+        const result = await this.plugin.boards.create({
+          title: name.value.trim(),
+          folder: folder.value.trim(),
+          id: crypto.randomUUID(),
+        });
+        this.close();
+        await this.plugin.openBoard(result.file);
+      } catch (e) {
+        error.textContent = errorMessage(e);
+        save.disabled = false;
+      }
+    };
+    name.focus();
+    name.select();
+  }
+}
+function configInput(parent, title, value, type = 'text') {
+  const label = el(parent, 'label', 'pb-config-field');
+  el(label, 'span', '', title);
+  const input = el(label, 'input', 'pb-config-input');
+  input.type = type;
+  input.value = value ?? '';
+  input.setAttribute('aria-label', title);
+  return input;
+}
+class BoardSettingsModal extends Modal {
+  constructor(plugin, file, focusColumn) {
+    super(plugin.app);
+    this.plugin = plugin;
+    this.file = file;
+    this.focusColumn = focusColumn;
+  }
+  async onOpen() {
+    this.modalEl.addClass('pb-config-modal');
+    this.contentEl.addClass('pikoboard');
+    try {
+      this.original = await this.app.vault.read(this.file);
+      this.board = B.parseBoard(this.original);
+      this.tasks = (await this.plugin.tasks()).filter((t) => t.board === this.board.id);
+      this.render();
+    } catch (e) {
+      el(this.contentEl, 'p', 'pb-error', errorMessage(e));
+    }
+  }
+  render() {
+    this.contentEl.querySelectorAll('.pb-picker-wrap').forEach((node) => node._dispose?.());
+    this.focusInput = null;
+    this.contentEl.replaceChildren();
+    el(this.contentEl, 'h2', '', this.file.basename);
+    const sections = el(this.contentEl, 'div', 'pb-config-sections');
+    const columnHeader = el(sections, 'div', 'pb-config-section-title');
+    el(columnHeader, 'h3', '', 'Столбцы');
+    button(
+      columnHeader,
+      '+ Столбец',
+      () => {
+        if (this.board.columns.length >= 30) return;
+        const c = {
+          value: crypto.randomUUID(),
+          label: 'Новый столбец',
+          kind: 'todo',
+          color: '#9992dc',
+          opacity: 0.08,
+          icon: '',
+        };
+        this.board.columns.push(c);
+        this.focusColumn = c.value;
+        this.render();
+      },
+      'pb-quiet',
+    );
+    const list = el(sections, 'div', 'pb-config-columns');
+    for (const [index, c] of this.board.columns.entries()) {
+      const row = el(list, 'div', 'pb-config-column');
+      row.style.background = tint(c.color, c.opacity);
+      const top = el(row, 'div', 'pb-config-column-top');
+      const mark = el(top, 'span', 'pb-status-icon');
+      statusMark(mark, c.icon);
+      const title = el(top, 'input', 'pb-config-column-name');
+      title.value = c.label;
+      title.setAttribute('aria-label', 'Название столбца ' + (index + 1));
+      title.oninput = () => {
+        c.label = title.value;
+      };
+      const up = icon(top, 'arrow-up', 'Передвинуть столбец вверх', () => {
+        [this.board.columns[index - 1], this.board.columns[index]] = [
+          c,
+          this.board.columns[index - 1],
+        ];
+        this.focusColumn = c.value;
+        this.render();
+      });
+      up.disabled = index === 0;
+      const down = icon(top, 'arrow-down', 'Передвинуть столбец вниз', () => {
+        [this.board.columns[index + 1], this.board.columns[index]] = [
+          c,
+          this.board.columns[index + 1],
+        ];
+        this.focusColumn = c.value;
+        this.render();
+      });
+      down.disabled = index === this.board.columns.length - 1;
+      const remove = icon(top, 'trash-2', 'Удалить столбец ' + c.label, () => {
+        const count = this.tasks.filter((t) => t.status === c.value).length;
+        if (count) {
+          this.error.textContent = `В столбце ${count} задач, включая архив. Сначала перенесите их в другой столбец.`;
+          return;
+        }
+        this.board.columns.splice(index, 1);
+        this.render();
+      });
+      remove.classList.add('pb-trash');
+      remove.disabled = this.board.columns.length === 1;
+      const controls = el(row, 'div', 'pb-config-column-controls');
+      const color = configInput(controls, 'Цвет', c.color, 'color');
+      color.oninput = () => {
+        c.color = color.value;
+        row.style.background = tint(c.color, c.opacity);
+      };
+      const opacity = configInput(
+        controls,
+        'Насыщенность фона',
+        Math.round(c.opacity * 100),
+        'range',
+      );
+      opacity.min = '0';
+      opacity.max = '100';
+      opacity.step = '1';
+      const amount = el(opacity.parentElement, 'output', '', `${Math.round(c.opacity * 100)}%`);
+      opacity.oninput = () => {
+        c.opacity = Number(opacity.value) / 100;
+        amount.textContent = opacity.value + '%';
+        row.style.background = tint(c.color, c.opacity);
+      };
+      const iconField = el(controls, 'div', 'pb-config-field');
+      el(iconField, 'span', '', 'Значок');
+      const iconRow = el(iconField, 'div', 'pb-config-icon-row');
+      const iconButton = picker(
+        iconRow,
+        c.icon ? (/^[a-z-]+$/.test(c.icon) ? 'Иконка' : 'Эмодзи') : 'Нет',
+        'Вид значка',
+        [
+          { value: '', label: 'Без значка' },
+          { value: 'inbox', label: 'Входящие', icon: 'inbox' },
+          { value: 'circle-dashed', label: 'В процессе', icon: 'circle-dashed' },
+          { value: 'circle-check', label: 'Готово', icon: 'circle-check' },
+          { value: 'clock', label: 'Ожидание', icon: 'clock' },
+          { value: 'star', label: 'Звезда', icon: 'star' },
+        ],
+        (item) => {
+          c.icon = item.value;
+          this.focusColumn = c.value;
+          this.render();
+        },
+        'pb-config-icon',
+      );
+      const emoji = el(iconRow, 'input', 'pb-config-emoji');
+      emoji.placeholder = '😊';
+      emoji.value = /^[a-z-]+$/.test(c.icon) ? '' : c.icon;
+      emoji.setAttribute('aria-label', 'Эмодзи для ' + c.label);
+      emoji.oninput = () => {
+        c.icon = emoji.value.trim();
+        iconButton.querySelector('.pb-picker-label').textContent = c.icon ? 'Эмодзи' : 'Нет';
+        mark.replaceChildren();
+        statusMark(mark, c.icon);
+      };
+      const kindField = el(controls, 'div', 'pb-config-field');
+      el(kindField, 'span', '', 'Тип');
+      const kinds = [
+        { value: 'todo', label: 'Ожидает' },
+        { value: 'active', label: 'В работе' },
+        { value: 'done', label: 'Завершено' },
+      ];
+      picker(
+        kindField,
+        kinds.find((k) => k.value === c.kind).label,
+        'Тип столбца ' + c.label,
+        kinds,
+        (item) => {
+          const original = B.parseBoard(this.original).columns.find((x) => x.value === c.value);
+          if (
+            original &&
+            original.kind !== item.value &&
+            this.tasks.some((t) => t.status === c.value)
+          ) {
+            this.error.textContent =
+              'Чтобы изменить тип, сначала перенесите задачи из этого столбца.';
+            return;
+          }
+          c.kind = item.value;
+          this.focusColumn = c.value;
+          this.render();
+        },
+        'pb-config-kind',
+      );
+      if (this.focusColumn === c.value) this.focusInput = title;
+    }
+    const storage = el(sections, 'details', 'pb-config-storage');
+    el(storage, 'summary', '', 'Хранение');
+    for (const [key, label] of [
+      ['tasksFolder', 'Папка новых задач'],
+      ['attachmentsFolder', 'Папка вложений'],
+    ]) {
+      const input = configInput(storage, label, this.board[key] ?? '');
+      input.placeholder = this.plugin.settings[key] || 'Корень хранилища';
+      const inherit = el(storage, 'label', 'pb-config-inherit');
+      const box = el(inherit, 'input');
+      box.type = 'checkbox';
+      box.checked = this.board[key] === undefined;
+      el(inherit, 'span', '', 'Из настроек PikoBoard');
+      input.disabled = box.checked;
+      box.onchange = () => {
+        input.disabled = box.checked;
+        if (box.checked) {
+          delete this.board[key];
+          input.value = '';
+          input.placeholder = this.plugin.settings[key] || 'Корень хранилища';
+        } else {
+          input.value = this.plugin.settings[key] || '';
+          input.placeholder = 'Корень хранилища';
+          this.board[key] = input.value.trim();
+        }
+      };
+      input.oninput = () => {
+        this.board[key] = input.value.trim();
+      };
+    }
+    this.error = el(this.contentEl, 'div', 'pb-error');
+    this.error.setAttribute('role', 'alert');
+    const actions = el(this.contentEl, 'div', 'pb-config-actions');
+    button(actions, 'Отмена', () => this.close());
+    const save = button(
+      actions,
+      'Сохранить',
+      async () => {
+        if (save.disabled) return;
+        save.disabled = true;
+        try {
+          const next = B.normalizeBoard(this.board);
+          // Recheck membership at save time: a task could be added while the dialog was open.
+          const tasks = (await this.plugin.tasks()).filter((t) => t.board === next.id);
+          const previous = B.parseBoard(this.original);
+          for (const c of previous.columns) {
+            const replacement = next.columns.find((x) => x.value === c.value);
+            if (
+              (!replacement || replacement.kind !== c.kind) &&
+              tasks.some((t) => t.status === c.value)
+            )
+              throw new Error(
+                'В изменённом столбце появились задачи. Перенесите их перед удалением или сменой типа.',
+              );
+          }
+          await this.plugin.boards.save(this.file, next, this.original);
+          this.plugin.refresh();
+          this.close();
+        } catch (e) {
+          this.error.textContent = errorMessage(e);
+          save.disabled = false;
+        }
+      },
+      'pb-new',
+    );
+    this.focusInput?.focus();
+  }
+  onClose() {
+    this.contentEl.querySelectorAll('.pb-picker-wrap').forEach((node) => node._dispose?.());
+  }
+}
+
 class PikoBoard extends Plugin {
   async onload() {
     this.data = Object.assign({ drafts: {} }, await this.loadData());
@@ -950,25 +1253,45 @@ class PikoBoard extends Plugin {
     this.noteCache = new Map();
     this.journals = new Map();
     this.disposed = false;
+    this.boards = new B.BoardStore(this.app);
+    await this.boards.list();
     await this.initializeStorage();
     this.addSettingTab(new PikoBoardSettings(this.app, this));
     this.registerView(TYPE, (leaf) => new BoardView(leaf, this));
+    this.registerView(FILE_TYPE, (leaf) => new BoardFileView(leaf, this));
+    this.registerExtensions(['pikoboard'], FILE_TYPE);
+    this.addCommand({ id: 'create-board', name: 'Создать доску', callback: () => this.newBoard() });
+    this.registerEvent(
+      this.app.workspace.on('file-menu', (menu, file) => {
+        if (file && !file.extension && file.children)
+          menu.addItem((item) =>
+            item
+              .setTitle('Создать доску PikoBoard')
+              .setIcon('columns-3')
+              .onClick(() => this.newBoard(file.path === '/' ? '' : file.path)),
+          );
+      }),
+    );
     this.addCommand({
       id: 'restore-message',
       name: 'Восстановить удалённую запись',
       callback: () => this.chooseDeletedMessage(),
     });
-    this.addCommand({ id: 'open', name: 'Открыть доску дел', callback: () => this.openBoard() });
+    this.addCommand({ id: 'open', name: 'Открыть доску', callback: () => this.chooseBoard() });
+    this.addCommand({ id: 'all-tasks', name: 'Все задачи', callback: () => this.openBoard() });
     this.addCommand({
       id: 'create',
       name: 'Создать задачу',
-      callback: () => this.createTask('open'),
+      callback: () => this.createTask(),
     });
-    this.addRibbonIcon('columns-3', 'PikoBoard', () => this.openBoard());
+    this.addRibbonIcon('columns-3', 'PikoBoard', () => this.chooseBoard());
     const refresh = (file) => {
       if (file?.path) this.noteCache.delete(file.path);
       clearTimeout(this.refreshTimer);
-      this.refreshTimer = setTimeout(() => this.refresh(), 200);
+      this.refreshTimer = setTimeout(async () => {
+        await this.boards.list();
+        this.refresh();
+      }, 200);
     };
     this.registerEvent(this.app.metadataCache.on('changed', refresh));
     for (const ev of ['create', 'modify', 'delete'])
@@ -988,7 +1311,7 @@ class PikoBoard extends Plugin {
           delete this.data.drafts[old];
           this.persist().catch(console.error);
         }
-        for (const leaf of this.app.workspace.getLeavesOfType(TYPE)) {
+        for (const leaf of this.boardLeaves()) {
           for (const key of ['recent', 'expanded'])
             if (leaf.view[key]?.delete(old)) leaf.view[key].add(file.path);
         }
@@ -1002,6 +1325,7 @@ class PikoBoard extends Plugin {
     });
     const maintain = async () => {
       try {
+        await this.boards.list();
         await this.store.archiveExpired();
       } catch (e) {
         console.error('PikoBoard archive:', e);
@@ -1057,6 +1381,7 @@ class PikoBoard extends Plugin {
     this.store = new S.TaskStore({
       app: this.app,
       settings: () => this.settings,
+      getBoard: (id) => this.boards?.get(id)?.board,
       parseYaml,
       stringifyYaml,
       archiveSchedule: this.data.archiveSchedule || {},
@@ -1075,18 +1400,94 @@ class PikoBoard extends Plugin {
   systemTags() {
     return this.store.systemTags();
   }
-  async openBoard() {
-    let leaf = this.app.workspace.getLeavesOfType(TYPE)[0];
+  boardLeaves() {
+    return [
+      ...this.app.workspace.getLeavesOfType(TYPE),
+      ...this.app.workspace.getLeavesOfType(FILE_TYPE),
+    ];
+  }
+  async openBoard(file) {
+    let leaf = this.boardLeaves().find((l) =>
+      file ? l.view.file?.path === file.path : !l.view.file,
+    );
+    if (file && !leaf) {
+      leaf = this.app.workspace.getLeaf('tab');
+      await leaf.openFile(file);
+    }
     if (!leaf) {
       leaf = this.app.workspace.getLeaf('tab');
       await leaf.setViewState({ type: TYPE, active: true });
     }
     await this.app.workspace.revealLeaf(leaf);
   }
+  newBoard(folder) {
+    const active = this.app.workspace.getActiveFile();
+    new CreateBoardModal(
+      this,
+      folder ?? this.settings.boardsFolder ?? active?.parent?.path ?? '',
+    ).open();
+  }
+  async chooseBoard() {
+    const boards = await this.boards.list();
+    new PickModal(
+      this.app,
+      [
+        { label: 'Все задачи', all: true },
+        ...boards.map(({ file }) => ({ label: file.basename + ' · ' + file.parent.path, file })),
+        { label: '+ Создать доску', create: true },
+      ],
+      (item) => (item.create ? this.newBoard() : this.openBoard(item.file)),
+      'Открыть доску',
+    ).open();
+  }
+  columnsFor(task) {
+    return task?.board ? this.boards?.get(task.board)?.board.columns || [] : statuses;
+  }
+  storageFolder(kind, task) {
+    const board = task?.board && this.boards?.get(task.board)?.board;
+    return board?.[kind] ?? this.settings[kind];
+  }
+  async moveToBoard(file, destination) {
+    const task = await this.store.get(file.path);
+    if (!task) throw new Error('Задача не найдена');
+    const columns = destination ? this.boards.get(destination)?.board.columns : statuses;
+    if (!columns?.length) throw new Error('Доска не найдена');
+    const column =
+      columns.find((c) => c.value === task.status) ||
+      columns.find(
+        (c) => c.kind === (task.isCompleted ? 'done' : task.isActive ? 'active' : 'todo'),
+      ) ||
+      columns[0];
+    await this.patch(file, { board: destination || '', status: column.value });
+  }
+  async chooseTaskBoard(file) {
+    const boards = await this.boards.list();
+    new PickModal(
+      this.app,
+      [
+        { label: 'Без доски', id: '' },
+        ...boards.map(({ file, board }) => ({
+          label: file.basename + ' · ' + file.parent.path,
+          id: board.id,
+        })),
+      ],
+      (item) => this.moveToBoard(file, item.id),
+      'Перенести на доску',
+    ).open();
+  }
+  async addExisting(view) {
+    const tasks = (await this.tasks()).filter((t) => !t.board && !t.archived);
+    new PickModal(
+      this.app,
+      tasks.map((t) => ({ label: t.title, path: t.path })),
+      (item) =>
+        this.moveToBoard(this.app.vault.getAbstractFileByPath(item.path), view.boardConfig.id),
+      'Добавить задачу без доски',
+    ).open();
+  }
   refresh() {
     if (this.disposed) return;
-    for (const leaf of this.app.workspace.getLeavesOfType(TYPE))
-      leaf.view.refresh?.().catch(console.error);
+    for (const leaf of this.boardLeaves()) leaf.view.refresh?.().catch(console.error);
     for (const m of this.modals) m.syncExternal().catch(console.error);
   }
   queue(file, job) {
@@ -1329,7 +1730,7 @@ class PikoBoard extends Plugin {
     );
   }
 
-  uploadMaterial(callback) {
+  uploadMaterial(callback, source) {
     return new Promise((resolve, reject) => {
       const input = document.createElement('input');
       input.type = 'file';
@@ -1337,15 +1738,17 @@ class PikoBoard extends Plugin {
       input.oncancel = () => resolve();
       input.onchange = async () => {
         try {
-          await this.ensureFolder('Вложения');
+          const task = source && (await this.store.get(source.path));
+          const folder = this.storageFolder('attachmentsFolder', task);
+          await this.ensureFolder(folder);
           for (const f of input.files) {
             const safe = f.name.replace(/[\\/:*?"<>|]/g, '_');
-            let path = normalizePath('Вложения/' + safe),
+            let path = normalizePath((folder ? folder + '/' : '') + safe),
               n = 2;
             const dot = safe.lastIndexOf('.');
             while (this.app.vault.getAbstractFileByPath(path))
               path = normalizePath(
-                'Вложения/' +
+                (folder ? folder + '/' : '') +
                   (dot > 0 ? safe.slice(0, dot) : safe) +
                   ' ' +
                   n++ +
@@ -1393,18 +1796,29 @@ class PikoBoard extends Plugin {
       .trim()
       .slice(0, 140);
     if (!safe || /^\.+$/.test(safe)) safe = 'Заметка';
-    let path = normalizePath(folder + '/' + safe + '.md'),
+    let path = normalizePath((folder ? folder + '/' : '') + safe + '.md'),
       n = 2;
     while (this.app.vault.getAbstractFileByPath(path))
-      path = normalizePath(folder + '/' + safe + ' ' + n++ + '.md');
+      path = normalizePath((folder ? folder + '/' : '') + safe + ' ' + n++ + '.md');
     return this.app.vault.create(path, content);
   }
-  async createTask(status = 'open', view) {
+  async createTask(status, view) {
+    view ||=
+      this.app.workspace.getActiveViewOfType?.(BoardFileView) ||
+      this.app.workspace.getActiveViewOfType?.(BoardView);
     if (!view) {
       await this.openBoard();
-      view = this.app.workspace.getLeavesOfType(TYPE)[0]?.view;
+      view = this.boardLeaves().find((l) => !l.view.file)?.view;
     }
-    if (view?.beginCreate) view.beginCreate(status);
+    if (view?.beginCreate) {
+      const columns = view.boardColumns();
+      status ??=
+        columns.find((c) => c.kind === (view.mode === 'focus' ? 'active' : 'todo'))?.value ??
+        columns[0].value;
+      if (!view.boardColumns().some((c) => c.value === status))
+        status = view.boardColumns()[0].value;
+      view.beginCreate(status);
+    }
   }
   async requestTrash(file) {
     const confirmed = await new Promise((resolve) =>
@@ -1431,6 +1845,7 @@ class PikoBoard extends Plugin {
       {
         title,
         status,
+        board: view?.boardConfig?.id || '',
         projects:
           view?.mode !== 'focus' && view?.filters.project && view.filters.project !== '__none__'
             ? ['[[' + view.filters.project + ']]']
@@ -1466,7 +1881,11 @@ class PikoBoard extends Plugin {
           new AskModal(this.app, 'Проект', 'Название проекта', async (title) => {
             const safe = title.replace(/[\\/:*?"<>|\[\]#^]/g, ' ').trim();
             if (!safe || /^\.+$/.test(safe)) throw new Error('Введите название проекта');
-            const f = await this.uniqueNote('Проекты/' + safe, safe, '---\ntype: project\n---\n\n');
+            const f = await this.uniqueNote(
+              [this.settings.projectsFolder, safe].filter(Boolean).join('/'),
+              safe,
+              '---\ntype: project\n---\n\n',
+            );
             await callback('[[' + f.path.replace(/\.md$/, '') + ']]');
           }).open();
         else await callback(i.value ? '[[' + i.value + ']]' : '');
@@ -1486,7 +1905,7 @@ class PikoBoard extends Plugin {
       async (i) => {
         if (i.create)
           new AskModal(this.app, 'Исследование', 'Название', async (title) =>
-            callback(await this.uniqueNote('Материалы', title, '')),
+            callback(await this.uniqueNote(this.settings.materialsFolder, title, '')),
           ).open();
         else await callback(i.file);
       },
@@ -1579,635 +1998,733 @@ class PikoBoard extends Plugin {
     }
   }
 }
-class BoardView extends ItemView {
-  constructor(leaf, plugin) {
-    super(leaf);
-    this.plugin = plugin;
-    this.filters = { project: '', tags: [] };
-    this.expanded = new Set();
-    this.recent = new Set();
-    this.cards = new Map();
-    this.archive = false;
-    this.mode = 'board';
-    this.seq = 0;
-    this.dragPath = null;
-    this.moving = false;
-  }
-  getViewType() {
-    return TYPE;
-  }
-  getDisplayText() {
-    return 'Дела';
-  }
-  getIcon() {
-    return 'columns-3';
-  }
-  getState() {
-    return { filters: this.filters, archive: this.archive, mode: this.mode };
-  }
-  async setState(state, result) {
-    if (state?.filters)
-      this.filters = { project: state.filters.project || '', tags: state.filters.tags || [] };
-    this.archive = !!state?.archive;
-    this.mode = ['board', 'overview', 'focus'].includes(state?.mode) ? state.mode : 'board';
-    await super.setState(state, result);
-    if (this.root) await this.refresh();
-  }
-  async onOpen() {
-    this.contentEl.empty();
-    this.root = el(this.contentEl, 'div', 'pikoboard');
-    this.toolbar = el(this.root, 'div', 'pb-toolbar');
-    this.domains = el(this.root, 'div', 'pb-domains');
-    this.area = el(this.root, 'div', 'pb-board');
-    this.registerDomEvent(
-      this.root.ownerDocument,
-      'click',
-      (e) => {
-        for (const col of this.columns?.values() || []) {
-          if (
-            col.createRow &&
-            !col.createRow.contains(e.target) &&
-            !col.createInput.value.trim() &&
-            !col.createRow._busy
-          ) {
-            col.createRow.hidden = true;
-            col.col.querySelector('.pb-add-task').hidden = false;
-          }
-        }
-      },
-      true,
-    );
-    await this.refresh();
-  }
-  async onClose() {
-    this.seq++;
-    for (const c of this.cards.values()) this.disposeCard(c);
-    this.toolbar?.querySelectorAll('.pb-picker-wrap').forEach((w) => w._dispose?.());
-  }
-  beginCreate(status = 'open') {
-    if (this.archive) {
+const BoardBase = (Base) =>
+  class extends Base {
+    constructor(leaf, plugin) {
+      super(leaf);
+      this.plugin = plugin;
+      this.filters = { project: '', tags: [] };
+      this.expanded = new Set();
+      this.recent = new Set();
+      this.cards = new Map();
       this.archive = false;
       this.mode = 'board';
-      this.refresh().then(() => this.beginCreate(status));
-      return;
+      this.seq = 0;
+      this.dragPath = null;
+      this.moving = false;
     }
-    const col = this.columns?.get(status);
-    if (!col) return;
-    if (col.createInput) {
-      col.createRow.hidden = false;
-      col.col.querySelector('.pb-add-task').hidden = true;
-      col.createRow.scrollIntoView({ block: 'nearest' });
-      col.createInput.focus();
-      return;
+    getViewType() {
+      return TYPE;
     }
-    const row = el(col.col, 'form', 'pb-create-row');
-    col.col.insertBefore(row, col.list);
-    col.createRow = row;
-    const input = el(row, 'textarea', 'pb-create-input');
-    col.createInput = input;
-    input.rows = 1;
-    input.placeholder =
-      'Новая задача · ' + (statuses.find((s) => s.value === status)?.label || status);
-    input.setAttribute('aria-label', 'Новая задача');
-    const add = col.col.querySelector('.pb-add-task');
-    add.hidden = true;
-    const hide = () => {
-      row.hidden = true;
-      add.hidden = false;
-    };
-    row.onfocusout = () =>
-      setTimeout(() => {
-        if (!row.contains(document.activeElement) && !input.value.trim() && !row._busy) hide();
-      }, 0);
-    const send = icon(row, 'arrow-up', 'Создать задачу', () => row.requestSubmit());
-    send.classList.add('pb-create-send');
-    send.hidden = true;
-    input.oninput = () => {
-      send.hidden = !input.value.trim();
-      grow(input, 36, 120);
-    };
-    input.onkeydown = (e) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        e.stopPropagation();
-        hide();
-        add.focus();
-      }
-      if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
-        e.preventDefault();
-        row._openTask = e.metaKey || e.ctrlKey;
-        row.requestSubmit();
-      }
-    };
-    row.onsubmit = async (e) => {
-      e.preventDefault();
-      const title = input.value.trim();
-      if (!title || row._busy) return;
-      row._busy = true;
-      send.disabled = true;
-      input.readOnly = true;
-      const open = row._openTask;
-      row._openTask = false;
-      try {
-        const f = await this.plugin.submitTask(title, status, this);
-        input.value = '';
-        send.hidden = true;
-        grow(input, 36, 120);
-        if (open && f instanceof TFile) {
-          hide();
-          new TaskModal(this.plugin, f).open();
-        } else if (row.contains(document.activeElement)) input.focus();
-        else hide();
-      } catch (err) {
-        new Notice(errorMessage(err));
-        input.focus();
-      } finally {
-        row._busy = false;
-        input.readOnly = false;
-        send.disabled = false;
-      }
-    };
-    row.scrollIntoView({ block: 'nearest' });
-    input.focus();
-  }
-  changed() {
-    this.recent.clear();
-    this.app.workspace.requestSaveLayout();
-    this.refresh();
-  }
-  switchMode(mode) {
-    this.archive = mode === 'archive';
-    this.mode = this.archive ? 'board' : mode;
-    this.changed();
-  }
-  disposeCard(card) {
-    card.composer?.dispose();
-    card.nextWrap?._dispose?.();
-    this.plugin.disposeHistory(card.feed);
-    card.node.remove();
-  }
-  async refresh() {
-    if (!this.root?.isConnected || this.dragPath || this.moving) return;
-    const seq = ++this.seq;
-    let tasks;
-    try {
-      tasks = await this.plugin.tasks();
-    } catch (e) {
-      if (seq === this.seq && !this.cards.size) {
-        this.area.replaceChildren();
-        this.layoutMode = null;
-        this.columns = null;
-        this.overviewSignature = null;
-        el(this.area, 'p', 'pb-error', errorMessage(e));
-      }
-      return;
+    getDisplayText() {
+      return this.file?.basename || 'Все задачи';
     }
-    if (seq !== this.seq) return;
-    tasks = C.orderedTasks(tasks, this.plugin.data.order);
-    this.allTasks = tasks;
-    this.renderToolbar();
-    const focus = this.mode === 'focus' && !this.archive;
-    const completed = new Set(
-      this.plugin
-        .api()
-        .catalog.statuses()
-        .filter((s) => s.isCompleted)
-        .map((s) => s.value),
-    );
-    const visible = tasks.filter(
-      (t) =>
-        !!t.archived === this.archive &&
-        (focus
-          ? t.status === 'in-progress'
-          : C.taskMatches(t, this.filters) || this.recent.has(t.path)),
-    );
-    const layout = this.archive ? 'archive' : this.mode;
-    if (this.layoutMode !== layout) {
+    getIcon() {
+      return 'columns-3';
+    }
+    getState() {
+      return { ...super.getState(), filters: this.filters, archive: this.archive, mode: this.mode };
+    }
+    async setState(state, result) {
+      if (state?.filters)
+        this.filters = { project: state.filters.project || '', tags: state.filters.tags || [] };
+      this.archive = !!state?.archive;
+      this.mode = state?.mode === 'focus' ? 'focus' : 'board';
+      await super.setState(state, result);
+      if (this.root) await this.refresh();
+    }
+    async onLoadFile() {
+      this.layoutMode = null;
+      this.toolbarSignature = null;
+      await this.refresh();
+    }
+    async onUnloadFile() {
+      this.boardConfig = null;
+      this.boardError = '';
+    }
+    async onOpen() {
+      this.contentEl.empty();
+      this.root = el(this.contentEl, 'div', 'pikoboard');
+      this.toolbar = el(this.root, 'div', 'pb-toolbar');
+      this.domains = el(this.root, 'div', 'pb-domains');
+      this.area = el(this.root, 'div', 'pb-board');
+      this.registerDomEvent(
+        this.root.ownerDocument,
+        'click',
+        (e) => {
+          for (const col of this.columns?.values() || []) {
+            if (
+              col.createRow &&
+              !col.createRow.contains(e.target) &&
+              !col.createInput.value.trim() &&
+              !col.createRow._busy
+            ) {
+              col.createRow.hidden = true;
+              col.col.querySelector('.pb-add-task').hidden = false;
+            }
+          }
+        },
+        true,
+      );
+      await this.refresh();
+    }
+    async onClose() {
+      this.seq++;
       for (const c of this.cards.values()) this.disposeCard(c);
-      this.cards.clear();
-      this.columns = null;
-      this.layoutMode = layout;
-      this.area.replaceChildren();
-      this.area.className =
-        'pb-board' +
-        (this.archive
-          ? ' pb-archive'
-          : focus
-            ? ' pb-focus'
-            : this.mode === 'overview'
-              ? ' pb-overview'
-              : '');
+      this.toolbar?.querySelectorAll('.pb-picker-wrap').forEach((w) => w._dispose?.());
     }
-    if (!this.columns) {
-      this.columns = new Map();
-      const columns = this.archive
-        ? [{ value: 'archive', label: 'Архив', cls: 'plan' }]
-        : focus
-          ? [statuses[1]]
-          : statuses;
-      for (const s of columns) {
-        const col = el(this.area, 'section', 'pb-column pb-' + s.cls),
-          header = el(col, 'header', 'pb-column-header');
-        if (s.icon) {
-          const mark = el(header, 'span', 'pb-status-icon');
-          setIcon(mark, s.icon);
-          mark.setAttribute('aria-hidden', 'true');
-        }
-        el(header, 'span', '', focus ? 'В работе · все домены' : s.label);
-        const count = el(header, 'small'),
-          list = el(col, 'div', 'pb-card-list');
-        this.columns.set(s.value, { col, count, list });
-        if (!this.archive)
-          button(col, '+ Задача', () => this.plugin.createTask(s.value, this), 'pb-add-task');
+    beginCreate(status = 'open') {
+      if (this.archive) {
+        this.archive = false;
+        this.mode = 'board';
+        this.refresh().then(() => this.beginCreate(status));
+        return;
       }
-    }
-    const visiblePaths = new Set(visible.map((t) => t.path));
-    for (const [path, c] of this.cards)
-      if (!visiblePaths.has(path)) {
-        this.disposeCard(c);
-        this.cards.delete(path);
+      const col = this.columns?.get(status);
+      if (!col) return;
+      if (col.createInput) {
+        col.createRow.hidden = false;
+        col.col.querySelector('.pb-add-task').hidden = true;
+        col.createRow.scrollIntoView({ block: 'nearest' });
+        col.createInput.focus();
+        return;
       }
-    for (const [key, col] of this.columns) {
-      const list = visible.filter(
-        (t) =>
-          key === 'archive' ||
-          (key === 'done'
-            ? completed.has(t.status)
-            : key === 'in-progress'
-              ? t.status === 'in-progress'
-              : !completed.has(t.status) && t.status !== 'in-progress'),
-      );
-      col.count.textContent = String(list.length);
-      let index = 0;
-      for (const task of list) {
-        if (seq !== this.seq) return;
-        let card = this.cards.get(task.path);
-        if (!card) {
-          card = this.makeCard(task);
-          if (!card) continue;
-          this.cards.set(task.path, card);
-        }
-        card.task = task;
-        this.updateCard(card);
-        const at = col.list.children[index++];
-        if (at !== card.node) col.list.insertBefore(card.node, at || null);
-        const note = await this.plugin.note(card.file);
-        if (seq !== this.seq) return;
-        this.plugin.journal(card.file).syncNext(note.nextAction || '');
-        if (!card.journal.hidden) await this.plugin.history(card.feed, card.file, this);
-      }
-    }
-  }
-
-  renderToolbar() {
-    const active = this.allTasks.filter((t) => !t.archived),
-      focus = this.mode === 'focus' && !this.archive;
-    const signature = JSON.stringify([
-      this.mode,
-      this.archive,
-      this.filters,
-      this.plugin.projects(),
-      this.allTasks.map((t) => [t.projects, t.visibleTags, t.status, t.archived]),
-    ]);
-    if (this.toolbarSignature === signature) return;
-    this.toolbarSignature = signature;
-    this.toolbar.querySelectorAll('.pb-picker-wrap').forEach((w) => w._dispose?.());
-    this.toolbar.replaceChildren();
-    this.domains.replaceChildren();
-    const nav = el(this.toolbar, 'div', 'pb-nav');
-    for (const [mode, label] of [
-      ['board', 'Доска'],
-      ['overview', 'Компактно'],
-      ['focus', 'В работе · ' + active.filter((t) => t.status === 'in-progress').length],
-      ['archive', 'Архив'],
-    ]) {
-      const selected = mode === 'archive' ? this.archive : !this.archive && this.mode === mode;
-      const b = button(nav, label, () => this.switchMode(mode), selected ? 'is-active' : '');
-      b.setAttribute('aria-pressed', String(selected));
-    }
-    if (!focus) {
-      const filters = el(this.toolbar, 'div', 'pb-filters');
-      const tags = [...new Set(this.allTasks.flatMap((t) => t.visibleTags))].sort();
-      picker(
-        filters,
-        this.filters.tags.length
-          ? this.filters.tags.map((t) => (t === '__none__' ? 'Без тегов' : '#' + t)).join(', ')
-          : 'Все теги',
-        'Фильтр по тегам',
-        [
-          { value: '', label: 'Все теги', selected: !this.filters.tags.length },
-          ...['__none__', ...tags].map((t) => ({
-            value: t,
-            label: t === '__none__' ? 'Без тегов' : '#' + t,
-            selected: this.filters.tags.includes(t),
-          })),
-        ],
-        (i) => {
-          const t = i.value;
-          this.filters.tags = !t
-            ? []
-            : this.filters.tags.includes(t)
-              ? this.filters.tags.filter((x) => x !== t)
-              : t === '__none__'
-                ? ['__none__']
-                : [...this.filters.tags.filter((x) => x !== '__none__'), t];
-          this.changed();
-        },
-        'pb-filter',
-      );
-      if (this.filters.tags.length)
-        icon(filters, 'x', 'Сбросить теги', () => {
-          this.filters.tags = [];
-          this.changed();
-        });
-    }
-    button(
-      this.toolbar,
-      '+ Задача',
-      () => this.plugin.createTask(focus ? 'in-progress' : 'open', this),
-      'pb-new',
-    );
-    this.domains.hidden = focus;
-    if (focus) return;
-    const options = new Map(this.plugin.projects().map((p) => [p.value, p.label]));
-    for (const t of this.allTasks)
-      for (const p of t.projects) options.set(C.linkTarget(p), fileTitle(p));
-    const scope = this.allTasks.filter((t) => !!t.archived === this.archive);
-    const choices = [
-      {
-        value: '',
-        label: focus ? 'Все домены' : 'Все',
-        count: focus ? active.filter((t) => t.status === 'in-progress').length : scope.length,
-      },
-      ...[...options].map(([value, label]) => ({
-        value,
-        label,
-        count: scope.filter((t) => C.linkTarget(t.projects[0] || '') === value).length,
-      })),
-      {
-        value: '__none__',
-        label: 'Без проекта',
-        count: scope.filter((t) => !t.projects.length).length,
-      },
-    ];
-    for (const choice of choices) {
-      if (this.archive && choice.value && choice.count === 0) continue;
-      const selected = focus ? !choice.value : this.filters.project === choice.value;
-      const b = button(
-        this.domains,
-        '',
-        () => {
-          if (focus) {
-            this.mode = 'board';
-            this.filters.tags = [];
-          }
-          this.filters.project = choice.value;
-          this.changed();
-        },
-        'pb-domain' + (selected ? ' is-active' : ''),
-      );
-      el(b, 'span', '', choice.label);
-      el(b, 'small', 'pb-domain-count', String(choice.count));
-      b.setAttribute('aria-pressed', String(selected));
-    }
-  }
-  makeCard(task) {
-    const file = this.app.vault.getAbstractFileByPath(task.path);
-    if (!(file instanceof TFile)) return null;
-    const node = document.createElement('article');
-    node.className = 'pb-task';
-    node.dataset.path = file.path;
-    const head = el(node, 'div', 'pb-task-head');
-    const c = { node, head, file, task };
-    const grip = el(head, 'span', 'pb-grip');
-    setIcon(grip, 'grip-vertical');
-    grip.setAttribute('aria-hidden', 'true');
-    c.title = button(
-      head,
-      task.title || file.basename,
-      () => new TaskModal(this.plugin, file).open(),
-      'pb-task-title',
-    );
-    c.toggle = icon(head, 'chevron-down', 'История', async () => {
-      const open = !this.expanded.has(file.path);
-      if (open) this.expanded.add(file.path);
-      else this.expanded.delete(file.path);
-      c.journal.hidden = !open;
-      c.toggle.setAttribute('aria-expanded', String(open));
-      if (open) await this.plugin.history(c.feed, file, this);
-    });
-    c.toggle.classList.add('pb-history-toggle');
-    c.toggle.setAttribute('aria-expanded', String(this.expanded.has(file.path)));
-    head.draggable = false;
-    head.onpointerdown = (e) => {
-      if (this.archive || e.button !== 0 || e.target.closest('.pb-history-toggle')) return;
-      const start = { x: e.clientX, y: e.clientY };
-      let dragging = false,
-        target = null;
-      const move = (ev) => {
-        if (!dragging && Math.hypot(ev.clientX - start.x, ev.clientY - start.y) < 5) return;
-        if (!dragging) {
-          dragging = true;
-          this.dragPath = file.path;
-          head.setPointerCapture(e.pointerId);
-          node.classList.add('pb-dragging');
-        }
-        ev.preventDefault();
-        this.clearDrop();
-        target = null;
-        for (const [status, col] of this.columns) {
-          const r = col.col.getBoundingClientRect();
-          if (
-            ev.clientX >= r.left &&
-            ev.clientX <= r.right &&
-            ev.clientY >= r.top &&
-            ev.clientY <= r.bottom
-          ) {
-            target = { status, ...this.dropTarget(col.list, ev.clientY, ev.clientX) };
-            col.col.classList.add('pb-drop');
-            if (target.node)
-              target.node.classList.add(target.after ? 'pb-insert-after' : 'pb-insert-before');
-            break;
-          }
-        }
+      const row = el(col.col, 'form', 'pb-create-row');
+      col.col.insertBefore(row, col.list);
+      col.createRow = row;
+      const input = el(row, 'textarea', 'pb-create-input');
+      col.createInput = input;
+      input.rows = 1;
+      input.placeholder =
+        'Новая задача · ' + (this.boardColumns().find((s) => s.value === status)?.label || status);
+      input.setAttribute('aria-label', 'Новая задача');
+      const add = col.col.querySelector('.pb-add-task');
+      add.hidden = true;
+      const hide = () => {
+        row.hidden = true;
+        add.hidden = false;
       };
-      const end = (ev) => {
-        head.ownerDocument.removeEventListener('pointermove', move);
-        head.ownerDocument.removeEventListener('pointerup', end);
-        head.ownerDocument.removeEventListener('pointercancel', end);
-        if (!dragging) return;
-        this.suppressClickUntil = Date.now() + 350;
-        this.dragPath = null;
-        node.classList.remove('pb-dragging');
-        this.clearDrop();
-        if (head.hasPointerCapture(e.pointerId)) head.releasePointerCapture(e.pointerId);
-        if (target && ev.type === 'pointerup')
-          this.moveCard(file.path, target.status, target.anchor, target.after);
-        else this.refresh();
+      row.onfocusout = () =>
+        setTimeout(() => {
+          if (!row.contains(document.activeElement) && !input.value.trim() && !row._busy) hide();
+        }, 0);
+      const send = icon(row, 'arrow-up', 'Создать задачу', () => row.requestSubmit());
+      send.classList.add('pb-create-send');
+      send.hidden = true;
+      input.oninput = () => {
+        send.hidden = !input.value.trim();
+        grow(input, 36, 120);
       };
-      head.ownerDocument.addEventListener('pointermove', move);
-      head.ownerDocument.addEventListener('pointerup', end);
-      head.ownerDocument.addEventListener('pointercancel', end);
-    };
-    head.addEventListener(
-      'click',
-      (e) => {
-        if (Date.now() < (this.suppressClickUntil || 0)) {
+      input.onkeydown = (e) => {
+        if (e.key === 'Escape') {
           e.preventDefault();
           e.stopPropagation();
+          hide();
+          add.focus();
         }
-      },
-      true,
-    );
-    node.oncontextmenu = (e) => {
-      if (e.target.closest('.pb-card-journal')) return;
-      e.preventDefault();
-      const menu = new Menu();
-      for (const s of statuses)
+        if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+          e.preventDefault();
+          row._openTask = e.metaKey || e.ctrlKey;
+          row.requestSubmit();
+        }
+      };
+      row.onsubmit = async (e) => {
+        e.preventDefault();
+        const title = input.value.trim();
+        if (!title || row._busy) return;
+        row._busy = true;
+        send.disabled = true;
+        input.readOnly = true;
+        const open = row._openTask;
+        row._openTask = false;
+        try {
+          const f = await this.plugin.submitTask(title, status, this);
+          input.value = '';
+          send.hidden = true;
+          grow(input, 36, 120);
+          if (open && f instanceof TFile) {
+            hide();
+            new TaskModal(this.plugin, f).open();
+          } else if (row.contains(document.activeElement)) input.focus();
+          else hide();
+        } catch (err) {
+          new Notice(errorMessage(err));
+          input.focus();
+        } finally {
+          row._busy = false;
+          input.readOnly = false;
+          send.disabled = false;
+        }
+      };
+      row.scrollIntoView({ block: 'nearest' });
+      input.focus();
+    }
+    changed() {
+      this.recent.clear();
+      this.app.workspace.requestSaveLayout();
+      this.refresh();
+    }
+    switchMode(mode) {
+      this.archive = mode === 'archive';
+      this.mode = this.archive ? 'board' : mode;
+      this.changed();
+    }
+    disposeCard(card) {
+      card.composer?.dispose();
+      card.nextWrap?._dispose?.();
+      this.plugin.disposeHistory(card.feed);
+      card.node.remove();
+    }
+    boardColumns() {
+      return this.boardConfig?.columns || statuses;
+    }
+    columnForTask(task) {
+      if (this.boardConfig)
+        return this.boardConfig.columns.some((c) => c.value === task.status)
+          ? task.status
+          : '__unknown__';
+      if (task.isCompleted ?? task.status === 'done') return 'done';
+      if (task.isActive ?? task.status === 'in-progress') return 'in-progress';
+      const known = this.plugin.columnsFor(task).some((c) => c.value === task.status);
+      return known ? 'open' : '__unknown__';
+    }
+    async refresh() {
+      if (!this.root?.isConnected || this.dragPath || this.moving) return;
+      const seq = ++this.seq;
+      if (this.file) {
+        try {
+          const loaded = await this.plugin.boards.load(this.file);
+          if (seq !== this.seq) return;
+          this.boardConfig = loaded.board;
+          this.boardError = '';
+        } catch (error) {
+          if (seq !== this.seq) return;
+          this.boardError = errorMessage(error);
+        }
+      }
+      if (this.boardError) {
+        for (const c of this.cards.values()) this.disposeCard(c);
+        this.cards.clear();
+        this.columns = null;
+        this.layoutMode = null;
+        this.toolbar.replaceChildren();
+        this.domains.replaceChildren();
+        this.area.replaceChildren();
+        el(this.area, 'p', 'pb-error', this.boardError);
+        return;
+      }
+      let tasks;
+      try {
+        tasks = await this.plugin.tasks();
+      } catch (e) {
+        if (seq === this.seq && !this.cards.size) {
+          this.area.replaceChildren();
+          this.layoutMode = null;
+          this.columns = null;
+          this.overviewSignature = null;
+          el(this.area, 'p', 'pb-error', errorMessage(e));
+        }
+        return;
+      }
+      if (seq !== this.seq) return;
+      tasks = C.orderedTasks(
+        tasks.filter((t) => !this.boardConfig || t.board === this.boardConfig.id),
+        this.plugin.data.order,
+      );
+      this.allTasks = tasks;
+      this.renderToolbar();
+      const focus = this.mode === 'focus' && !this.archive;
+      const visible = tasks.filter(
+        (t) =>
+          !!t.archived === this.archive &&
+          (focus
+            ? (t.isActive ?? t.status === 'in-progress')
+            : C.taskMatches(t, this.filters) || this.recent.has(t.path)),
+      );
+      const unknown = tasks.some((t) => this.columnForTask(t) === '__unknown__');
+      const layout = JSON.stringify([
+        this.archive,
+        this.mode,
+        this.boardColumns(),
+        unknown,
+        this.boardConfig?.id,
+      ]);
+      if (this.layoutMode !== layout) {
+        for (const c of this.cards.values()) this.disposeCard(c);
+        this.cards.clear();
+        this.columns = null;
+        this.layoutMode = layout;
+        this.area.replaceChildren();
+        this.area.className = 'pb-board pb-overview' + (this.archive ? ' pb-archive' : '');
+      }
+      if (!this.columns) {
+        this.columns = new Map();
+        const columns = this.archive
+          ? [{ value: 'archive', label: 'Архив', color: '#858594', opacity: 0.05 }]
+          : [
+              ...this.boardColumns(),
+              ...(unknown
+                ? [
+                    {
+                      value: '__unknown__',
+                      label: 'Без столбца',
+                      color: '#858594',
+                      opacity: 0.05,
+                      icon: 'circle-help',
+                    },
+                  ]
+                : []),
+            ];
+        this.area.style.gridTemplateColumns = `repeat(${columns.length}, minmax(min(280px, 85vw), 1fr))`;
+        for (const s of columns) {
+          const col = el(this.area, 'section', 'pb-column'),
+            header = el(col, 'header', 'pb-column-header');
+          if (s.icon) {
+            const mark = el(header, 'span', 'pb-status-icon');
+            statusMark(mark, s.icon);
+            mark.setAttribute('aria-hidden', 'true');
+          }
+          col.style.background = tint(s.color || '#858594', s.opacity ?? 0.06);
+          el(header, 'span', '', s.label);
+          const count = el(header, 'small'),
+            list = el(col, 'div', 'pb-card-list');
+          this.columns.set(s.value, { col, count, list });
+          if (this.boardConfig && !this.archive && s.value !== '__unknown__')
+            icon(header, 'ellipsis', 'Настроить столбец ' + s.label, () =>
+              new BoardSettingsModal(this.plugin, this.file, s.value).open(),
+            );
+          if (!this.archive && s.value !== '__unknown__')
+            button(col, '+ Задача', () => this.plugin.createTask(s.value, this), 'pb-add-task');
+        }
+      }
+      const visiblePaths = new Set(visible.map((t) => t.path));
+      for (const [path, c] of this.cards)
+        if (!visiblePaths.has(path)) {
+          this.disposeCard(c);
+          this.cards.delete(path);
+        }
+      for (const [key, col] of this.columns) {
+        const list = visible.filter((t) => key === 'archive' || this.columnForTask(t) === key);
+        col.count.textContent = String(list.length);
+        let index = 0;
+        for (const task of list) {
+          if (seq !== this.seq) return;
+          let card = this.cards.get(task.path);
+          if (!card) {
+            card = this.makeCard(task);
+            if (!card) continue;
+            this.cards.set(task.path, card);
+          }
+          card.task = task;
+          this.updateCard(card);
+          const at = col.list.children[index++];
+          if (at !== card.node) col.list.insertBefore(card.node, at || null);
+          const note = await this.plugin.note(card.file);
+          if (seq !== this.seq) return;
+          this.plugin.journal(card.file).syncNext(note.nextAction || '');
+          if (!card.journal.hidden) await this.plugin.history(card.feed, card.file, this);
+        }
+      }
+    }
+
+    renderToolbar() {
+      const active = this.allTasks.filter((t) => !t.archived),
+        focus = this.mode === 'focus' && !this.archive;
+      const signature = JSON.stringify([
+        this.boardConfig,
+        this.file?.path,
+        this.mode,
+        this.archive,
+        this.filters,
+        this.plugin.projects(),
+        this.allTasks.map((t) => [t.projects, t.visibleTags, t.status, t.archived]),
+      ]);
+      if (this.toolbarSignature === signature) return;
+      this.toolbarSignature = signature;
+      this.toolbar.querySelectorAll('.pb-picker-wrap').forEach((w) => w._dispose?.());
+      this.toolbar.replaceChildren();
+      this.domains.replaceChildren();
+      button(
+        this.toolbar,
+        this.getDisplayText(),
+        () => this.plugin.chooseBoard(),
+        'pb-board-title',
+      );
+      const nav = el(this.toolbar, 'div', 'pb-nav');
+      for (const [mode, label] of [
+        ['board', 'Все'],
+        [
+          'focus',
+          'В работе · ' + active.filter((t) => t.isActive ?? t.status === 'in-progress').length,
+        ],
+        ['archive', 'Архив'],
+      ]) {
+        const selected = mode === 'archive' ? this.archive : !this.archive && this.mode === mode;
+        const b = button(nav, label, () => this.switchMode(mode), selected ? 'is-active' : '');
+        b.setAttribute('aria-pressed', String(selected));
+      }
+      if (!focus) {
+        const filters = el(this.toolbar, 'div', 'pb-filters');
+        const tags = [...new Set(this.allTasks.flatMap((t) => t.visibleTags))].sort();
+        picker(
+          filters,
+          this.filters.tags.length
+            ? this.filters.tags.map((t) => (t === '__none__' ? 'Без тегов' : '#' + t)).join(', ')
+            : 'Все теги',
+          'Фильтр по тегам',
+          [
+            { value: '', label: 'Все теги', selected: !this.filters.tags.length },
+            ...['__none__', ...tags].map((t) => ({
+              value: t,
+              label: t === '__none__' ? 'Без тегов' : '#' + t,
+              selected: this.filters.tags.includes(t),
+            })),
+          ],
+          (i) => {
+            const t = i.value;
+            this.filters.tags = !t
+              ? []
+              : this.filters.tags.includes(t)
+                ? this.filters.tags.filter((x) => x !== t)
+                : t === '__none__'
+                  ? ['__none__']
+                  : [...this.filters.tags.filter((x) => x !== '__none__'), t];
+            this.changed();
+          },
+          'pb-filter',
+        );
+        if (this.filters.tags.length)
+          icon(filters, 'x', 'Сбросить теги', () => {
+            this.filters.tags = [];
+            this.changed();
+          });
+      }
+      button(
+        this.toolbar,
+        '+ Задача',
+        () =>
+          this.plugin.createTask(
+            (focus ? this.boardColumns().find((s) => s.kind === 'active') : this.boardColumns()[0])
+              ?.value || this.boardColumns()[0].value,
+            this,
+          ),
+        'pb-new',
+      );
+      const optionsButton = icon(this.toolbar, 'ellipsis', 'Меню доски', () =>
+        actionMenu(
+          optionsButton,
+          [
+            ...(this.file
+              ? [
+                  {
+                    label: 'Настройки доски',
+                    icon: 'settings-2',
+                    action: () => new BoardSettingsModal(this.plugin, this.file).open(),
+                  },
+                  {
+                    label: 'Добавить существующую задачу',
+                    icon: 'list-plus',
+                    action: () => this.plugin.addExisting(this),
+                  },
+                ]
+              : []),
+            { label: 'Создать доску', icon: 'plus', action: () => this.plugin.newBoard() },
+            { label: 'Все задачи', icon: 'panels-top-left', action: () => this.plugin.openBoard() },
+          ],
+          'Меню доски',
+          this.app,
+        ),
+      );
+      this.domains.hidden = focus;
+      if (focus) return;
+      const options = new Map(this.plugin.projects().map((p) => [p.value, p.label]));
+      for (const t of this.allTasks)
+        for (const p of t.projects) options.set(C.linkTarget(p), fileTitle(p));
+      const scope = this.allTasks.filter((t) => !!t.archived === this.archive);
+      const choices = [
+        {
+          value: '',
+          label: focus ? 'Все домены' : 'Все',
+          count: focus
+            ? active.filter((t) => t.isActive ?? t.status === 'in-progress').length
+            : scope.length,
+        },
+        ...[...options].map(([value, label]) => ({
+          value,
+          label,
+          count: scope.filter((t) => C.linkTarget(t.projects[0] || '') === value).length,
+        })),
+        {
+          value: '__none__',
+          label: 'Без проекта',
+          count: scope.filter((t) => !t.projects.length).length,
+        },
+      ];
+      for (const choice of choices) {
+        if ((this.archive || this.boardConfig) && choice.value && choice.count === 0) continue;
+        const selected = focus ? !choice.value : this.filters.project === choice.value;
+        const b = button(
+          this.domains,
+          '',
+          () => {
+            if (focus) {
+              this.mode = 'board';
+              this.filters.tags = [];
+            }
+            this.filters.project = choice.value;
+            this.changed();
+          },
+          'pb-domain' + (selected ? ' is-active' : ''),
+        );
+        el(b, 'span', '', choice.label);
+        el(b, 'small', 'pb-domain-count', String(choice.count));
+        b.setAttribute('aria-pressed', String(selected));
+      }
+    }
+    makeCard(task) {
+      const file = this.app.vault.getAbstractFileByPath(task.path);
+      if (!(file instanceof TFile)) return null;
+      const node = document.createElement('article');
+      node.className = 'pb-task';
+      node.dataset.path = file.path;
+      const head = el(node, 'div', 'pb-task-head');
+      const c = { node, head, file, task };
+      const grip = el(head, 'span', 'pb-grip');
+      setIcon(grip, 'grip-vertical');
+      grip.setAttribute('aria-hidden', 'true');
+      c.title = button(
+        head,
+        task.title || file.basename,
+        () => new TaskModal(this.plugin, file).open(),
+        'pb-task-title',
+      );
+      c.toggle = icon(head, 'chevron-down', 'История', async () => {
+        const open = !this.expanded.has(file.path);
+        if (open) this.expanded.add(file.path);
+        else this.expanded.delete(file.path);
+        c.journal.hidden = !open;
+        c.toggle.setAttribute('aria-expanded', String(open));
+        if (open) await this.plugin.history(c.feed, file, this);
+      });
+      c.toggle.classList.add('pb-history-toggle');
+      c.toggle.setAttribute('aria-expanded', String(this.expanded.has(file.path)));
+      head.draggable = false;
+      head.onpointerdown = (e) => {
+        if (this.archive || e.button !== 0 || e.target.closest('.pb-history-toggle')) return;
+        const start = { x: e.clientX, y: e.clientY };
+        let dragging = false,
+          target = null;
+        const move = (ev) => {
+          if (!dragging && Math.hypot(ev.clientX - start.x, ev.clientY - start.y) < 5) return;
+          if (!dragging) {
+            dragging = true;
+            this.dragPath = file.path;
+            head.setPointerCapture(e.pointerId);
+            node.classList.add('pb-dragging');
+          }
+          ev.preventDefault();
+          this.clearDrop();
+          target = null;
+          for (const [status, col] of this.columns) {
+            const r = col.col.getBoundingClientRect();
+            if (
+              ev.clientX >= r.left &&
+              ev.clientX <= r.right &&
+              ev.clientY >= r.top &&
+              ev.clientY <= r.bottom
+            ) {
+              target = { status, ...this.dropTarget(col.list, ev.clientY, ev.clientX) };
+              col.col.classList.add('pb-drop');
+              if (target.node)
+                target.node.classList.add(target.after ? 'pb-insert-after' : 'pb-insert-before');
+              break;
+            }
+          }
+        };
+        const end = (ev) => {
+          head.ownerDocument.removeEventListener('pointermove', move);
+          head.ownerDocument.removeEventListener('pointerup', end);
+          head.ownerDocument.removeEventListener('pointercancel', end);
+          if (!dragging) return;
+          this.suppressClickUntil = Date.now() + 350;
+          this.dragPath = null;
+          node.classList.remove('pb-dragging');
+          this.clearDrop();
+          if (head.hasPointerCapture(e.pointerId)) head.releasePointerCapture(e.pointerId);
+          if (target && ev.type === 'pointerup')
+            this.moveCard(file.path, target.status, target.anchor, target.after);
+          else this.refresh();
+        };
+        head.ownerDocument.addEventListener('pointermove', move);
+        head.ownerDocument.addEventListener('pointerup', end);
+        head.ownerDocument.addEventListener('pointercancel', end);
+      };
+      head.addEventListener(
+        'click',
+        (e) => {
+          if (Date.now() < (this.suppressClickUntil || 0)) {
+            e.preventDefault();
+            e.stopPropagation();
+          }
+        },
+        true,
+      );
+      node.oncontextmenu = (e) => {
+        if (e.target.closest('.pb-card-journal')) return;
+        e.preventDefault();
+        const menu = new Menu();
+        for (const s of this.plugin.columnsFor(c.task))
+          menu.addItem((i) =>
+            i
+              .setTitle(s.label)
+              .setIcon(/^[a-z-]+$/.test(s.icon || '') ? s.icon : 'circle')
+              .setChecked(c.task.status === s.value)
+              .onClick(() =>
+                this.plugin
+                  .patch(file, { status: s.value })
+                  .catch((err) => new Notice(errorMessage(err))),
+              ),
+          );
+        menu.addSeparator();
+        menu.addItem((i) =>
+          i.setTitle(c.task.archived ? 'Вернуть' : 'В архив').onClick(() => this.archiveTask(c)),
+        );
         menu.addItem((i) =>
           i
-            .setTitle(s.label)
-            .setIcon(s.icon)
-            .setChecked(c.task.status === s.value)
+            .setTitle('Перенести на доску')
+            .setIcon('columns-3')
+            .onClick(() => this.plugin.chooseTaskBoard(file)),
+        );
+        menu.addItem((i) => i.setTitle('Открыть файл').onClick(() => this.plugin.openFile(file)));
+        menu.addSeparator();
+        menu.addItem((i) =>
+          i
+            .setTitle('Удалить задачу')
+            .setIcon('trash-2')
             .onClick(() =>
-              this.plugin
-                .patch(file, { status: s.value })
-                .catch((err) => new Notice(errorMessage(err))),
+              this.plugin.requestTrash(file).catch((err) => new Notice(errorMessage(err))),
             ),
         );
-      menu.addSeparator();
-      menu.addItem((i) =>
-        i.setTitle(c.task.archived ? 'Вернуть' : 'В архив').onClick(() => this.archiveTask(c)),
-      );
-      menu.addItem((i) => i.setTitle('Открыть файл').onClick(() => this.plugin.openFile(file)));
-      menu.addSeparator();
-      menu.addItem((i) =>
-        i
-          .setTitle('Удалить задачу')
-          .setIcon('trash-2')
-          .onClick(() =>
-            this.plugin.requestTrash(file).catch((err) => new Notice(errorMessage(err))),
-          ),
-      );
-      menu.showAtMouseEvent(e);
-    };
-    c.meta = el(node, 'div', 'pb-meta');
-    if (this.archive) button(node, 'Вернуть', () => this.archiveTask(c), 'pb-restore');
-    c.nextWrap = nextStep(node, this.plugin, file, async () => {
-      this.expanded.add(file.path);
-      c.journal.hidden = false;
-      c.toggle.setAttribute('aria-expanded', 'true');
-      await c.composer.setMode('next');
-      await this.plugin.history(c.feed, file, this);
-    });
-    c.journal = el(node, 'div', 'pb-card-journal');
-    c.journal.hidden = !this.expanded.has(file.path);
-    c.feed = el(c.journal, 'div', 'pb-feed');
-    c.feed.setAttribute('role', 'region');
-    c.feed.setAttribute('aria-label', 'История задачи');
-    c.composer = new JournalComposer(this.plugin, file, c.journal);
-    return c;
-  }
-  clearDrop() {
-    this.area
-      .querySelectorAll('.pb-drop,.pb-insert-before,.pb-insert-after')
-      .forEach((n) => n.classList.remove('pb-drop', 'pb-insert-before', 'pb-insert-after'));
-  }
-  dropTarget(list, y, x) {
-    const nodes = [...list.children].filter((n) => n.dataset.path !== this.dragPath);
-    if (this.mode === 'focus' && Number.isFinite(x)) {
-      let node = null,
-        distance = Infinity;
-      for (const n of nodes) {
-        const r = n.getBoundingClientRect(),
-          dx = Math.max(r.left - x, 0, x - r.right),
-          dy = Math.max(r.top - y, 0, y - r.bottom),
-          d = dx * dx + dy * dy;
-        if (d < distance) {
-          node = n;
-          distance = d;
-        }
-      }
-      const r = node?.getBoundingClientRect();
-      return {
-        node,
-        anchor: node?.dataset.path || null,
-        after: !!r && (y > r.bottom || (y >= r.top && x > r.left + r.width / 2)),
+        menu.showAtMouseEvent(e);
       };
+      c.meta = el(node, 'div', 'pb-meta');
+      if (this.archive) button(node, 'Вернуть', () => this.archiveTask(c), 'pb-restore');
+      c.nextWrap = nextStep(node, this.plugin, file, async () => {
+        this.expanded.add(file.path);
+        c.journal.hidden = false;
+        c.toggle.setAttribute('aria-expanded', 'true');
+        await c.composer.setMode('next');
+        await this.plugin.history(c.feed, file, this);
+      });
+      c.journal = el(node, 'div', 'pb-card-journal');
+      c.journal.hidden = !this.expanded.has(file.path);
+      c.feed = el(c.journal, 'div', 'pb-feed');
+      c.feed.setAttribute('role', 'region');
+      c.feed.setAttribute('aria-label', 'История задачи');
+      c.composer = new JournalComposer(this.plugin, file, c.journal);
+      return c;
     }
-    const before = nodes.find((n) => {
-      const r = n.getBoundingClientRect();
-      return y < r.top + r.height / 2;
-    });
-    const node = before || nodes.at(-1);
-    return { node, anchor: node?.dataset.path || null, after: !!node && !before };
-  }
-  async moveCard(path, status, anchor, after) {
-    if (this.moving) return;
-    const file = this.app.vault.getAbstractFileByPath(path);
-    if (!(file instanceof TFile)) return;
-    this.moving = true;
-    try {
-      const task = this.allTasks.find((t) => t.path === path);
-      if (task?.status !== status) await this.plugin.patch(file, { status });
-      const old = this.plugin.data.order;
-      this.plugin.data.order = C.moveTaskOrder(
-        C.orderedTasks(await this.plugin.tasks(), old).map((t) => t.path),
-        path,
-        anchor,
-        after,
-      );
+    clearDrop() {
+      this.area
+        .querySelectorAll('.pb-drop,.pb-insert-before,.pb-insert-after')
+        .forEach((n) => n.classList.remove('pb-drop', 'pb-insert-before', 'pb-insert-after'));
+    }
+    dropTarget(list, y, x) {
+      const nodes = [...list.children].filter((n) => n.dataset.path !== this.dragPath);
+      const before = nodes.find((n) => {
+        const r = n.getBoundingClientRect();
+        return y < r.top + r.height / 2;
+      });
+      const node = before || nodes.at(-1);
+      return { node, anchor: node?.dataset.path || null, after: !!node && !before };
+    }
+    async moveCard(path, status, anchor, after) {
+      if (this.moving || status === '__unknown__') return;
+      const file = this.app.vault.getAbstractFileByPath(path);
+      if (!(file instanceof TFile)) return;
+      this.moving = true;
       try {
-        await this.plugin.persist();
+        const task = this.allTasks.find((t) => t.path === path);
+        if (!this.boardConfig && task?.board) {
+          const kind = statuses.find((s) => s.value === status)?.kind;
+          const currentKind = this.plugin
+            .columnsFor(task)
+            .find((s) => s.value === task.status)?.kind;
+          status =
+            currentKind === kind
+              ? task.status
+              : this.plugin.columnsFor(task).find((s) => s.kind === kind)?.value;
+          if (!status)
+            throw new Error(
+              'На этой доске нет столбца такого типа. Настройте столбцы на самой доске.',
+            );
+        }
+        if (task?.status !== status) await this.plugin.patch(file, { status });
+        const old = this.plugin.data.order;
+        this.plugin.data.order = C.moveTaskOrder(
+          C.orderedTasks(await this.plugin.tasks(), old).map((t) => t.path),
+          path,
+          anchor,
+          after,
+        );
+        try {
+          await this.plugin.persist();
+        } catch (e) {
+          this.plugin.data.order = old;
+          throw e;
+        }
       } catch (e) {
-        this.plugin.data.order = old;
-        throw e;
+        new Notice(errorMessage(e));
+      } finally {
+        this.moving = false;
+        await this.refresh();
+        this.plugin.refresh();
       }
-    } catch (e) {
-      new Notice(errorMessage(e));
-    } finally {
-      this.moving = false;
-      await this.refresh();
-      this.plugin.refresh();
     }
-  }
-  revealNew(path) {
-    const card = this.cards.get(path);
-    if (!card) return;
-    card.node.classList.add('pb-new-task');
-    card.node.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-    const timer = setTimeout(() => card.node.classList.remove('pb-new-task'), 6500);
-    this.register(() => clearTimeout(timer));
-  }
-  async archiveTask(c) {
-    try {
-      await this.plugin.api().tasks.archive(c.file.path, !c.task.archived, CONTEXT);
-      this.plugin.refresh();
-    } catch (e) {
-      new Notice(errorMessage(e));
+    revealNew(path) {
+      const card = this.cards.get(path);
+      if (!card) return;
+      card.node.classList.add('pb-new-task');
+      card.node.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      const timer = setTimeout(() => card.node.classList.remove('pb-new-task'), 6500);
+      this.register(() => clearTimeout(timer));
     }
-  }
-  updateCard(c) {
-    const t = c.task;
-    c.title.textContent = t.title || c.file.basename;
-    const matches = (this.mode === 'focus' && !this.archive) || C.taskMatches(t, this.filters);
-    const signature = JSON.stringify([t.projects, t.visibleTags, t.due, matches]);
-    if (c.metaSignature === signature) return;
-    c.metaSignature = signature;
-    c.meta.replaceChildren();
-    for (const p of t.projects)
-      el(
-        c.meta,
-        'span',
-        'pb-badge pb-project pb-color-' + C.colorFor(C.linkTarget(p)),
-        fileTitle(p),
-      );
-    for (const tag of t.visibleTags) el(c.meta, 'span', 'pb-badge', '#' + tag);
-    if (t.due) el(c.meta, 'span', 'pb-badge pb-due', dateText(t.due));
-    if (!matches) el(c.meta, 'span', 'pb-badge', 'Вне фильтра');
-    c.meta.hidden = !c.meta.children.length;
+    async archiveTask(c) {
+      try {
+        await this.plugin.api().tasks.archive(c.file.path, !c.task.archived, CONTEXT);
+        this.plugin.refresh();
+      } catch (e) {
+        new Notice(errorMessage(e));
+      }
+    }
+    updateCard(c) {
+      const t = c.task;
+      c.title.textContent = t.title || c.file.basename;
+      const matches = (this.mode === 'focus' && !this.archive) || C.taskMatches(t, this.filters);
+      const signature = JSON.stringify([t.projects, t.visibleTags, t.due, matches]);
+      if (c.metaSignature === signature) return;
+      c.metaSignature = signature;
+      c.meta.replaceChildren();
+      for (const p of t.projects)
+        el(
+          c.meta,
+          'span',
+          'pb-badge pb-project pb-color-' + C.colorFor(C.linkTarget(p)),
+          fileTitle(p),
+        );
+      for (const tag of t.visibleTags) el(c.meta, 'span', 'pb-badge', '#' + tag);
+      if (t.due) el(c.meta, 'span', 'pb-badge pb-due', dateText(t.due));
+      if (!matches) el(c.meta, 'span', 'pb-badge', 'Вне фильтра');
+      c.meta.hidden = !c.meta.children.length;
+    }
+  };
+class BoardView extends BoardBase(ItemView) {}
+class BoardFileView extends BoardBase(FileView) {
+  getViewType() {
+    return FILE_TYPE;
   }
 }
+
 class TaskModal extends Modal {
   constructor(plugin, file) {
     super(plugin.app);
@@ -2267,6 +2784,14 @@ class TaskModal extends Modal {
     ).classList.add('pb-trash');
     icon(actions, 'ellipsis', 'Действия', (e) => {
       const menu = new Menu();
+      menu.addItem((i) =>
+        i
+          .setTitle('Перенести на доску')
+          .setIcon('columns-3')
+          .onClick(async () => {
+            if (await this.flushSafe()) this.plugin.chooseTaskBoard(this.file);
+          }),
+      );
       menu.addItem((i) =>
         i.setTitle('Открыть файл').onClick(async () => {
           if (await this.close()) this.plugin.openFile(this.file);
@@ -2390,7 +2915,18 @@ class TaskModal extends Modal {
     if (title === this.task.title) return this.propertySave;
     return this.change({ title });
   }
+  propsKey(task) {
+    return JSON.stringify([
+      task.status,
+      task.board,
+      task.projects,
+      task.tags,
+      task.due,
+      this.plugin.columnsFor(task),
+    ]);
+  }
   renderProps() {
+    this.propsSignature = this.propsKey(this.task);
     const tagDraft =
       this.tagsInput && this.tagsInput.value !== this.tagsInput._baseline
         ? this.tagsInput.value
@@ -2398,26 +2934,27 @@ class TaskModal extends Modal {
     this.closeCalendar();
     this.props.querySelectorAll('.pb-picker-wrap').forEach((w) => w._dispose?.());
     this.props.replaceChildren();
+    const columns = this.plugin.columnsFor(this.task);
     const statusButton = picker(
       this.props,
-      statuses.find((s) => s.value === this.task.status)?.label || this.task.status,
+      columns.find((s) => s.value === this.task.status)?.label || this.task.status,
       'Статус',
-      this.plugin
-        .api()
-        .catalog.statuses()
-        .map((s) => ({
-          value: s.value,
-          label: statuses.find((x) => x.value === s.value)?.label || s.label,
-          selected: s.value === this.task.status,
-          icon: statuses.find((x) => x.value === s.value)?.icon,
-        })),
+      columns.map((s) => ({
+        value: s.value,
+        label: s.label,
+        selected: s.value === this.task.status,
+        icon: s.icon,
+      })),
       (i) => this.change({ status: i.value }),
       'pb-chip pb-status',
     );
-    const statusIcon = el(statusButton, 'span', 'pb-status-icon');
-    setIcon(statusIcon, statuses.find((s) => s.value === this.task.status)?.icon || 'circle');
-    statusIcon.setAttribute('aria-hidden', 'true');
-    statusButton.prepend(statusIcon);
+    const mark = columns.find((s) => s.value === this.task.status)?.icon;
+    if (mark) {
+      const statusIcon = el(statusButton, 'span', 'pb-status-icon');
+      statusMark(statusIcon, mark);
+      statusIcon.setAttribute('aria-hidden', 'true');
+      statusButton.prepend(statusIcon);
+    }
     const p = this.task.projects?.[0],
       file = p && this.app.metadataCache.getFirstLinkpathDest(C.linkTarget(p), this.file.path),
       key = file ? file.path.replace(/\.md$/, '') : C.linkTarget(p || '');
@@ -2658,7 +3195,7 @@ class TaskModal extends Modal {
         'Сохранить копию',
         async () => {
           const f = await this.plugin.uniqueNote(
-            'Материалы',
+            this.plugin.settings.materialsFolder,
             this.file.basename + ' — моя версия',
             this.session.value,
           );
@@ -2854,35 +3391,11 @@ class TaskModal extends Modal {
     }
   }
 
-  upload() {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.multiple = true;
-    input.onchange = async () => {
-      try {
-        if (!(await this.flushSafe())) return;
-        await this.plugin.ensureFolder('Вложения');
-        for (const f of input.files) {
-          const safe = f.name.replace(/[\\/:*?"<>|]/g, '_');
-          let path = normalizePath('Вложения/' + safe),
-            n = 2;
-          const dot = safe.lastIndexOf('.');
-          while (this.app.vault.getAbstractFileByPath(path))
-            path = normalizePath(
-              'Вложения/' +
-                (dot > 0 ? safe.slice(0, dot) : safe) +
-                ' ' +
-                n++ +
-                (dot > 0 ? safe.slice(dot) : ''),
-            );
-          const target = await this.app.vault.createBinary(path, await f.arrayBuffer());
-          await this.attachNote(target);
-        }
-      } catch (e) {
-        this.fail(e);
-      }
-    };
-    input.click();
+  async upload() {
+    if (!(await this.flushSafe())) return;
+    this.plugin
+      .uploadMaterial((target) => this.attachNote(target), this.file)
+      .catch((e) => this.fail(e));
   }
   async syncExternal() {
     if (
@@ -2921,9 +3434,7 @@ class TaskModal extends Modal {
         this.previewEl.contains(document.activeElement)
       )
         return;
-      const propsChanged =
-        JSON.stringify([task.status, task.projects, task.tags, task.due]) !==
-        JSON.stringify([this.task.status, this.task.projects, this.task.tags, this.task.due]);
+      const propsChanged = this.propsKey(task) !== this.propsSignature;
       this.task = task;
       if (
         document.activeElement !== this.titleInput &&
@@ -2998,15 +3509,27 @@ class PikoBoardSettings extends PluginSettingTab {
     containerEl.empty();
     const save = (patch) =>
       this.plugin.saveSettings(patch).catch((e) => new Notice(errorMessage(e)));
-    new Setting(containerEl)
-      .setName('Папка новых задач')
-      .setDesc('Существующие задачи остаются на своих местах.')
-      .addText((field) => {
-        field.setValue(this.plugin.settings.tasksFolder).setPlaceholder('Задачи');
-        field.inputEl.addEventListener('change', () =>
-          save({ tasksFolder: field.getValue().trim() }),
-        );
-      });
+    for (const [key, label] of [
+      ['boardsFolder', 'Папка новых досок'],
+      ['tasksFolder', 'Папка новых задач'],
+      ['attachmentsFolder', 'Папка вложений'],
+      ['materialsFolder', 'Папка исследований'],
+      ['projectsFolder', 'Папка проектов'],
+    ])
+      new Setting(containerEl)
+        .setName(label)
+        .setDesc('Внутри хранилища. Пустое поле — корень. Существующие файлы не переносятся.')
+        .addText((field) => {
+          field.setValue(this.plugin.settings[key]).setPlaceholder('Корень хранилища');
+          field.inputEl.addEventListener('change', async () => {
+            try {
+              await this.plugin.saveSettings({ [key]: field.getValue().trim() });
+            } catch (e) {
+              field.setValue(this.plugin.settings[key]);
+              new Notice(errorMessage(e));
+            }
+          });
+        });
     new Setting(containerEl)
       .setName('Архивировать завершённые задачи')
       .setDesc('Файлы сохраняются. Задачи можно вернуть из архива.')
@@ -3030,9 +3553,7 @@ class PikoBoardSettings extends PluginSettingTab {
     });
     new Setting(containerEl)
       .setName('Доска')
-      .addButton((b) =>
-        b.setButtonText('Открыть PikoBoard').onClick(() => this.plugin.openBoard()),
-      );
+      .addButton((b) => b.setButtonText('Создать доску').onClick(() => this.plugin.newBoard()));
   }
 }
 module.exports = PikoBoard;

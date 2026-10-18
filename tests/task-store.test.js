@@ -17,7 +17,8 @@ function fixture(options = {}) {
   const files = new Map(),
     directories = new Map(),
     disk = new Map(),
-    locks = new Map();
+    locks = new Map(),
+    boards = new Map((options.boards || []).map((board) => [board.id, board]));
   let clock = new Date('2026-01-10T12:00:00Z'),
     config = settingsFrom(options.settings);
   const add = (path, data, body) => {
@@ -70,11 +71,13 @@ function fixture(options = {}) {
     now: () => clock,
     archiveSchedule: options.archiveSchedule || {},
     onScheduleChange: async () => saved++,
+    getBoard: (id) => boards.get(id),
   });
   return {
     store,
     vault,
     disk,
+    boards,
     add,
     saved: () => saved,
     at: (value) => {
@@ -284,7 +287,8 @@ test('property-based task identity and custom fields are migrated without needin
   assert.equal(settings.archiveDays, 7);
   const f = fixture({ settings });
   f.add('Legacy.md', { kind: 'action', name: 'Legacy', state: 'finished', tags: ['archive'] });
-  assert.equal((await f.store.tasks.get('Legacy.md')).status, 'done');
+  assert.equal((await f.store.tasks.get('Legacy.md')).status, 'finished');
+  assert.equal((await f.store.tasks.get('Legacy.md')).isCompleted, true);
   assert.equal((await f.store.tasks.get('Legacy.md')).archived, true);
   const task = await f.store.tasks.create({ title: 'New', status: 'open' });
   assert.equal(f.data(task.path).kind, 'action');
@@ -301,4 +305,268 @@ test('invalid title and status are rejected before writing a file', async () => 
   await assert.rejects(f.store.tasks.create({ title: '', status: 'open' }));
   await assert.rejects(f.store.tasks.create({ title: 'Example', status: 'invalid' }));
   assert.equal(f.disk.size, 0);
+});
+test('board identity survives title and folder changes; same-named boards keep separate tasks', async () => {
+  const columns = [{ value: 'queue', label: 'Queue', kind: 'todo' }];
+  const f = fixture({
+    boards: [
+      { id: 'alpha', name: 'Work', tasksFolder: 'Alpha/Tasks', columns },
+      { id: 'beta', name: 'Work', tasksFolder: 'Beta/Tasks', columns },
+    ],
+  });
+  const a = await f.store.tasks.create({ title: 'Same title', status: 'queue', board: 'alpha' });
+  const b = await f.store.tasks.create({ title: 'Same title', status: 'queue', board: 'beta' });
+  assert.equal(a.path, 'Alpha/Tasks/Same title.md');
+  assert.equal(b.path, 'Beta/Tasks/Same title.md');
+  assert.equal(f.data(a.path).board, 'alpha');
+  f.boards.set('alpha', { ...f.boards.get('alpha'), name: 'Renamed', tasksFolder: 'New/Tasks' });
+  assert.equal((await f.store.tasks.get(a.path)).board, 'alpha');
+  assert.equal((await f.store.tasks.list()).filter((task) => task.board === 'alpha').length, 1);
+  const next = await f.store.tasks.create({ title: 'Next', status: 'queue', board: 'alpha' });
+  assert.equal(next.path, 'New/Tasks/Next.md');
+  assert.equal((await f.store.tasks.get(b.path)).board, 'beta');
+});
+test('board task folders inherit the global folder and can explicitly select the vault root', async () => {
+  const columns = [{ value: 'open', label: 'To do', kind: 'todo' }];
+  const f = fixture({
+    settings: { tasksFolder: 'Global/Tasks' },
+    boards: [
+      { id: 'inherited', columns },
+      { id: 'root', tasksFolder: '', columns },
+    ],
+  });
+  assert.equal(
+    (await f.store.tasks.create({ title: 'Inherited', status: 'open', board: 'inherited' })).path,
+    'Global/Tasks/Inherited.md',
+  );
+  assert.equal(
+    (await f.store.tasks.create({ title: 'Root', status: 'open', board: 'root' })).path,
+    'Root.md',
+  );
+  const unassigned = await f.store.tasks.create({ title: 'Global', status: 'open' });
+  assert.equal(unassigned.board, '');
+  assert.equal(f.data(unassigned.path).board, undefined);
+});
+test('status catalog follows live board columns and exposes roles without mutating board settings', () => {
+  const f = fixture({
+    boards: [
+      {
+        id: 'custom',
+        columns: [
+          {
+            value: 'queued',
+            label: 'Later',
+            kind: 'todo',
+            icon: '',
+            color: '#8080ff',
+            opacity: 0.12,
+          },
+          { value: 'research', label: 'Research', kind: 'active' },
+          { value: 'shipped', label: 'Released', kind: 'done' },
+        ],
+      },
+    ],
+  });
+  const statuses = f.store.catalog.statuses('custom');
+  assert.equal(statuses[0].icon, '');
+  assert.equal(statuses[0].color, '#8080ff');
+  assert.equal(statuses[0].opacity, 0.12);
+  assert.equal(statuses[1].isActive, true);
+  assert.equal(statuses[2].isCompleted, true);
+  statuses[0].label = 'Local mutation';
+  assert.equal(f.boards.get('custom').columns[0].label, 'Later');
+  f.boards.get('custom').columns.push({ value: 'waiting', label: 'Waiting', kind: 'todo' });
+  assert.equal(f.store.catalog.statuses('custom').length, 4);
+  assert.deepEqual(
+    f.store.catalog.statuses().map((status) => status.value),
+    ['open', 'in-progress', 'done'],
+  );
+  assert.deepEqual(f.store.catalog.statuses('missing'), []);
+});
+test('unknown statuses and missing-board identities remain intact when reading or editing content', async () => {
+  const f = fixture({ boards: [{ id: 'known', columns: [{ value: 'queue', kind: 'todo' }] }] });
+  f.add('Unknown.md', { tags: ['task'], status: 'unexpected-status', board: 'known' });
+  f.add('Orphan.md', {
+    tags: ['task'],
+    status: 'done',
+    board: 'removed-board',
+    completedDate: '2000-01-01',
+  });
+  const unknown = await f.store.tasks.get('Unknown.md');
+  assert.equal(unknown.status, 'unexpected-status');
+  assert.equal(unknown.isCompleted, false);
+  assert.equal(unknown.isActive, false);
+  const edited = await f.store.tasks.update('Unknown.md', { title: 'Keep my status' });
+  assert.equal(edited.status, 'unexpected-status');
+  const orphan = await f.store.tasks.get('Orphan.md');
+  assert.equal(orphan.board, 'removed-board');
+  assert.equal(orphan.status, 'done');
+  assert.equal(orphan.isCompleted, false);
+  assert.equal(await f.store.archiveExpired(), 0);
+  const recovered = await f.store.tasks.update('Orphan.md', { board: '', status: 'open' });
+  assert.equal(recovered.board, '');
+  assert.equal(recovered.completedDate, undefined);
+});
+test('create rejects missing board identities, foreign statuses and unsafe folder overrides before writing', async () => {
+  const f = fixture({
+    boards: [
+      { id: 'custom', columns: [{ value: 'queue', kind: 'todo' }] },
+      { id: 'unsafe', tasksFolder: '../Outside', columns: [{ value: 'queue', kind: 'todo' }] },
+    ],
+  });
+  for (const board of ['missing', ' custom ', ['custom']])
+    await assert.rejects(f.store.tasks.create({ title: 'No file', status: 'queue', board }));
+  await assert.rejects(f.store.tasks.create({ title: 'No file', status: 'open', board: 'custom' }));
+  await assert.rejects(
+    f.store.tasks.create({ title: 'No file', status: 'queue', board: 'unsafe' }),
+  );
+  assert.equal(f.disk.size, 0);
+  assert.equal(f.vault.getAbstractFileByPath('Задачи'), undefined);
+});
+test('moving a task validates the destination status atomically and preserves content', async () => {
+  const f = fixture({
+    boards: [
+      { id: 'first', columns: [{ value: 'review', kind: 'active' }] },
+      { id: 'second', columns: [{ value: 'accepted', kind: 'done' }] },
+    ],
+  });
+  const task = await f.store.tasks.create({
+    title: 'Move',
+    board: 'first',
+    status: 'review',
+    details: 'Keep [[Research]]',
+  });
+  const before = f.disk.get(task.path);
+  await assert.rejects(f.store.tasks.update(task.path, { board: 'missing' }));
+  await assert.rejects(f.store.tasks.update(task.path, { board: 'second' }));
+  assert.equal(f.disk.get(task.path), before);
+  const moved = await f.store.tasks.update(task.path, { board: 'second', status: 'accepted' });
+  assert.equal(moved.board, 'second');
+  assert.equal(moved.status, 'accepted');
+  assert.equal(moved.isCompleted, true);
+  assert.equal(moved.completedDate, '2026-01-10T12:00:00.000Z');
+  assert.equal(splitDocument(f.disk.get(task.path), JSON.parse).body, '\nKeep [[Research]]');
+});
+test('completion timestamps follow custom column roles, including moving between boards with the same status', async () => {
+  const f = fixture({
+    boards: [
+      { id: 'active', columns: [{ value: 'review', kind: 'active' }] },
+      {
+        id: 'complete',
+        columns: [
+          { value: 'review', kind: 'done' },
+          { value: 'released', kind: 'done' },
+        ],
+      },
+    ],
+  });
+  const task = await f.store.tasks.create({ title: 'Flow', board: 'active', status: 'review' });
+  assert.equal(task.isActive, true);
+  assert.equal(task.completedDate, undefined);
+  await f.store.tasks.update(task.path, { board: 'complete' });
+  f.at('2026-01-11T12:00:00Z');
+  let current = await f.store.tasks.update(task.path, { status: 'released' });
+  assert.equal(current.completedDate, '2026-01-10T12:00:00.000Z');
+  await f.store.tasks.update(task.path, { board: 'active', status: 'review' });
+  assert.equal((await f.store.tasks.get(task.path)).completedDate, undefined);
+  current = await f.store.tasks.update(task.path, { board: 'complete' });
+  assert.equal(current.completedDate, '2026-01-11T12:00:00.000Z');
+  const createdDone = await f.store.tasks.create({
+    title: 'Already done',
+    board: 'complete',
+    status: 'released',
+  });
+  assert.equal(createdDone.completedDate, '2026-01-11T12:00:00.000Z');
+});
+test('automatic archive respects each board role and legacy completed statuses, not status spelling', async () => {
+  const f = fixture({
+    settings: { completedStatuses: ['legacy-finished'] },
+    boards: [
+      { id: 'finished', columns: [{ value: 'released', kind: 'done' }] },
+      {
+        id: 'ongoing',
+        columns: [
+          { value: 'released', kind: 'active' },
+          { value: 'done', kind: 'todo' },
+        ],
+      },
+    ],
+  });
+  for (const [path, board, status] of [
+    ['Complete.md', 'finished', 'released'],
+    ['Active.md', 'ongoing', 'released'],
+    ['Misleading.md', 'ongoing', 'done'],
+    ['Legacy.md', '', 'legacy-finished'],
+  ])
+    f.add(path, { tags: ['task'], board, status, completedDate: '2000-01-01' });
+  assert.equal(await f.store.archiveExpired(), 2);
+  assert.equal((await f.store.tasks.get('Complete.md')).archived, true);
+  assert.equal((await f.store.tasks.get('Legacy.md')).archived, true);
+  assert.equal((await f.store.tasks.get('Active.md')).archived, false);
+  assert.equal((await f.store.tasks.get('Misleading.md')).archived, false);
+  await f.store.tasks.archive('Complete.md', false);
+  assert.equal((await f.store.tasks.get('Complete.md')).completedDate, '2026-01-10T12:00:00.000Z');
+  assert.equal(await f.store.archiveExpired(), 0);
+});
+test('automatic archive rereads a concurrent board move and does not double-count an external archive', async () => {
+  const f = fixture({
+    boards: [
+      { id: 'finished', columns: [{ value: 'review', kind: 'done' }] },
+      { id: 'ongoing', columns: [{ value: 'review', kind: 'active' }] },
+    ],
+  });
+  f.add('Moving.md', {
+    tags: ['task'],
+    board: 'finished',
+    status: 'review',
+    completedDate: '2000-01-01',
+  });
+  f.vault.beforeProcess = () =>
+    f.disk.set(
+      'Moving.md',
+      encode({
+        tags: ['task'],
+        board: 'ongoing',
+        status: 'review',
+        completedDate: '2000-01-01',
+      }),
+    );
+  assert.equal(await f.store.archiveExpired(), 0);
+  assert.equal((await f.store.tasks.get('Moving.md')).archived, false);
+  f.add('External.md', { tags: ['task'], status: 'done', completedDate: '2000-01-01' });
+  f.vault.beforeProcess = () =>
+    f.disk.set(
+      'External.md',
+      encode({
+        tags: ['task', 'archived'],
+        status: 'done',
+        completedDate: '2000-01-01',
+      }),
+    );
+  assert.equal(await f.store.archiveExpired(), 0);
+});
+test('all configurable storage folders use the same vault-relative validation', () => {
+  const defaults = settingsFrom();
+  assert.equal(defaults.attachmentsFolder, 'Вложения');
+  assert.equal(defaults.materialsFolder, 'Материалы');
+  assert.equal(defaults.projectsFolder, 'Проекты');
+  assert.equal(defaults.boardsFolder, '');
+  for (const key of [
+    'tasksFolder',
+    'attachmentsFolder',
+    'materialsFolder',
+    'projectsFolder',
+    'boardsFolder',
+  ]) {
+    assert.equal(settingsFrom({ [key]: 'Space/Notes/' })[key], 'Space/Notes');
+    assert.equal(settingsFrom({ [key]: '' })[key], '');
+    for (const value of [
+      '../Outside',
+      '.obsidian/plugins',
+      '/tmp',
+      'Folder/../Other',
+      'Bad\u0000Path',
+    ])
+      assert.throws(() => settingsFrom({ [key]: value }));
+  }
 });

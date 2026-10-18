@@ -13,6 +13,10 @@ const FIELDS = {
 };
 const DEFAULT_SETTINGS = {
   tasksFolder: 'Задачи',
+  attachmentsFolder: 'Вложения',
+  materialsFolder: 'Материалы',
+  projectsFolder: 'Проекты',
+  boardsFolder: '',
   taskTag: 'task',
   taskIdentificationMethod: 'tag',
   taskPropertyName: '',
@@ -23,9 +27,15 @@ const DEFAULT_SETTINGS = {
   archiveDays: 7,
 };
 const STATUSES = [
-  { value: 'open', label: 'backlog', isCompleted: false },
-  { value: 'in-progress', label: 'in progress', isCompleted: false },
-  { value: 'done', label: 'done', isCompleted: true },
+  { value: 'open', label: 'backlog', kind: 'todo', isCompleted: false, isActive: false },
+  {
+    value: 'in-progress',
+    label: 'in progress',
+    kind: 'active',
+    isCompleted: false,
+    isActive: true,
+  },
+  { value: 'done', label: 'done', kind: 'done', isCompleted: true, isActive: false },
 ];
 function strings(value) {
   return (Array.isArray(value) ? value : value == null ? [] : [value])
@@ -50,7 +60,7 @@ function folderPath(value) {
   if (!path) return '';
   if (
     path.startsWith('/') ||
-    path.split('/').some((p) => !p || p.startsWith('.') || /[:*?"<>|]/.test(p))
+    path.split('/').some((p) => !p || p.startsWith('.') || /[:*?"<>|\u0000-\u001f]/.test(p))
   )
     throw new Error('Укажите папку внутри хранилища, например «Задачи».');
   return path;
@@ -61,7 +71,14 @@ function settingsFrom(saved = {}) {
     ...saved,
     fieldMapping: { ...FIELDS, ...saved.fieldMapping },
   };
-  result.tasksFolder = folderPath(result.tasksFolder);
+  for (const key of [
+    'tasksFolder',
+    'attachmentsFolder',
+    'materialsFolder',
+    'projectsFolder',
+    'boardsFolder',
+  ])
+    result[key] = folderPath(result[key]);
   result.taskTag = tags(result.taskTag)[0] || 'task';
   result.archiveDays =
     Number.isFinite(Number(result.archiveDays)) && Number(result.archiveDays) > 0
@@ -129,6 +146,7 @@ class TaskStore {
     now = () => new Date(),
     archiveSchedule = {},
     onScheduleChange = async () => {},
+    getBoard = () => null,
   }) {
     Object.assign(this, {
       app,
@@ -138,6 +156,7 @@ class TaskStore {
       now,
       archiveSchedule,
       onScheduleChange,
+      getBoard,
     });
     this.creating = Promise.resolve();
     this.tasks = {
@@ -148,10 +167,39 @@ class TaskStore {
       archive: (path, archived) => this.update(path, { archived }),
       clearDue: (path) => this.update(path, { due: null }),
     };
-    this.catalog = { statuses: () => STATUSES.map((s) => ({ ...s })) };
+    this.catalog = { statuses: (boardId = '') => this.statuses(boardId) };
   }
   get config() {
     return settingsFrom(this.settings());
+  }
+  statuses(boardId = '') {
+    const columns = boardId ? this.getBoard(boardId)?.columns || [] : STATUSES;
+    return columns.map((column) => ({
+      ...column,
+      isCompleted: column.kind === 'done',
+      isActive: column.kind === 'active',
+    }));
+  }
+  statusFlags(status, boardId = '') {
+    const column = this.statuses(boardId).find((item) => item.value === status);
+    return {
+      isCompleted: boardId ? !!column?.isCompleted : this.config.completedStatuses.includes(status),
+      isActive: !!column?.isActive,
+    };
+  }
+  boardForWrite(value) {
+    if (value == null || value === '') return { id: '', config: null };
+    if (typeof value !== 'string' || value !== value.trim()) throw new Error('Некорректная доска');
+    const board = this.getBoard(value);
+    if (!board || board.id !== value) throw new Error('Доска не найдена');
+    return { id: value, config: board };
+  }
+  validateStatus(status, boardId) {
+    if (
+      !this.statuses(boardId).some((item) => item.value === status) &&
+      (boardId || !this.config.completedStatuses.includes(status))
+    )
+      throw new Error('Неизвестный статус');
   }
   systemTags() {
     const s = this.config;
@@ -167,16 +215,16 @@ class TaskStore {
     if (!this.isTask(data)) return null;
     const s = this.config,
       f = s.fieldMapping,
-      rawStatus = data[f.status];
+      rawStatus = data[f.status],
+      status = typeof rawStatus === 'string' && rawStatus ? rawStatus : 'open',
+      board = typeof data.board === 'string' ? data.board : '';
     return {
       path: file.path,
       title:
         typeof data[f.title] === 'string' && data[f.title].trim() ? data[f.title] : file.basename,
-      status: s.completedStatuses.includes(rawStatus)
-        ? 'done'
-        : rawStatus === 'in-progress'
-          ? rawStatus
-          : 'open',
+      status,
+      board,
+      ...this.statusFlags(status, board),
       tags: tags(data.tags),
       projects: strings(data[f.projects]),
       due: dateValue(data[f.due]),
@@ -223,9 +271,11 @@ class TaskStore {
       f = s.fieldMapping,
       title = String(input.title || '').trim();
     if (!title) throw new Error('Введите название задачи');
-    if (!STATUSES.some((x) => x.value === input.status)) throw new Error('Неизвестный статус');
+    const board = this.boardForWrite(input.board);
+    this.validateStatus(input.status, board.id);
+    const tasksFolder = folderPath(board.config?.tasksFolder ?? s.tasksFolder);
     let folder = '';
-    for (const name of s.tasksFolder.split('/').filter(Boolean)) {
+    for (const name of tasksFolder.split('/').filter(Boolean)) {
       folder = folder ? folder + '/' + name : name;
       const existing = this.app.vault.getAbstractFileByPath(folder);
       if (existing?.extension) throw new Error('Путь к папке занят файлом');
@@ -244,6 +294,7 @@ class TaskStore {
       [f.dateCreated]: now,
       [f.dateModified]: now,
     };
+    if (board.id) data.board = board.id;
     const taskTags = tags(input.tags).filter(
       (tag) => tag.toLowerCase() !== f.archiveTag.toLowerCase(),
     );
@@ -253,7 +304,7 @@ class TaskStore {
     data.tags = [...new Set(taskTags)];
     if (input.projects?.length) data[f.projects] = strings(input.projects).slice(0, 1);
     if (input.due) data[f.due] = input.due;
-    if (input.status === 'done') data[f.completedDate] = now;
+    if (this.statusFlags(input.status, board.id).isCompleted) data[f.completedDate] = now;
     const body = '\n' + (input.details || '');
     for (let n = 1; ; n++) {
       const path = (folder ? folder + '/' : '') + safe + (n === 1 ? '' : ' ' + n) + '.md';
@@ -282,18 +333,24 @@ class TaskStore {
         return source;
       }
       const now = this.now().toISOString();
+      if ('board' in patch || 'status' in patch) {
+        const board = 'board' in patch ? this.boardForWrite(patch.board).id : before.board;
+        const status = 'status' in patch ? patch.status : before.status;
+        this.validateStatus(status, board);
+        if ('board' in patch) {
+          if (board) data.board = board;
+          else delete data.board;
+        }
+        if ('status' in patch) data[f.status] = status;
+        clearSchedule = status !== before.status || board !== before.board;
+        if (this.statusFlags(status, board).isCompleted) {
+          if (!before.isCompleted || !data[f.completedDate]) data[f.completedDate] = now;
+        } else delete data[f.completedDate];
+      }
       if ('title' in patch) {
         if (typeof patch.title !== 'string' || !patch.title.trim())
           throw new Error('Введите название задачи');
         data[f.title] = patch.title.trim();
-      }
-      if ('status' in patch) {
-        if (!STATUSES.some((x) => x.value === patch.status)) throw new Error('Неизвестный статус');
-        data[f.status] = patch.status;
-        clearSchedule = patch.status !== before.status;
-        if (patch.status === 'done') {
-          if (before.status !== 'done' || !data[f.completedDate]) data[f.completedDate] = now;
-        } else delete data[f.completedDate];
       }
       if ('due' in patch) {
         if (patch.due) data[f.due] = patch.due;
@@ -318,7 +375,7 @@ class TaskStore {
         data.tags = tags(data.tags).filter((t) => t.toLowerCase() !== f.archiveTag.toLowerCase());
         if (patch.archived) data.tags.push(f.archiveTag);
         // A restored completed task gets a full grace period instead of immediately vanishing again.
-        if (!patch.archived && before.archived && before.status === 'done')
+        if (!patch.archived && before.archived && this.fromData(file, data).isCompleted)
           data[f.completedDate] = now;
       }
       data[f.dateModified] = now;
@@ -345,11 +402,15 @@ class TaskStore {
     try {
       const now = +this.now();
       const expired = (task) =>
-        task.status === 'done' && !task.archived && this.archiveDeadline(task) <= now;
+        task.isCompleted && !task.archived && this.archiveDeadline(task) <= now;
       for (const task of await this.list()) {
         if (expired(task)) {
-          const result = await this.update(task.path, { archived: true }, expired);
-          if (result.archived) count++;
+          let matched = false;
+          const result = await this.update(task.path, { archived: true }, (current) => {
+            matched = expired(current);
+            return matched;
+          });
+          if (matched && result.archived) count++;
         }
       }
       return count;

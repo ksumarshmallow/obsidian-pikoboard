@@ -33,6 +33,7 @@ function setup(body = 'Old') {
     Plugin: class {},
     PluginSettingTab: class {},
     ItemView: class {},
+    FileView: class {},
     Modal,
     FuzzySuggestModal: class {},
     Menu: class {},
@@ -44,7 +45,7 @@ function setup(body = 'Old') {
     normalizePath: (x) => x,
   };
   const scope = {
-    require: (n) => (n === 'obsidian' ? obs : C),
+    require: (n) => (n === 'obsidian' ? obs : require(n.replace('./', '../'))),
     module: { exports: {} },
     console,
     setTimeout,

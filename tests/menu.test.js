@@ -73,6 +73,7 @@ function fixture() {
             Plugin: base,
             PluginSettingTab: base,
             ItemView: base,
+            FileView: base,
             Modal: base,
             FuzzySuggestModal: base,
             Notice: base,
@@ -84,7 +85,7 @@ function fixture() {
             },
             setIcon() {},
           }
-        : C,
+        : require(n.replace('./', '../')),
     document: doc,
     module: { exports: {} },
     console,

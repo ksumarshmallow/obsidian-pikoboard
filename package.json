@@ -1,10 +1,10 @@
 {
   "name": "obsidian-pikoboard",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "private": true,
   "scripts": {
     "test": "node build.js && node --test tests/*.test.js",
-    "check": "node --check main.js && node --check core.js && node --check task-store.js",
+    "check": "node --check main.js && node --check core.js && node --check task-store.js && node --check board-store.js",
     "build": "node build.js"
   },
   "description": "Минималистичная самостоятельная доска для Obsidian",

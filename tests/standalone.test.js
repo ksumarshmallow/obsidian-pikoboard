@@ -7,19 +7,27 @@ const C = require('../core');
 const S = require('../task-store');
 test('the committed bundle fully starts with only the Obsidian API', async () => {
   const registrations = [];
+  const extensions = [];
+  const viewFactories = new Map();
+  const commands = new Map();
   class Plugin {
     async loadData() {
       return {};
     }
     async saveData() {}
-    registerView(type) {
+    registerView(type, create) {
       registrations.push(type);
+      viewFactories.set(type, create);
+    }
+    registerExtensions(names, type) {
+      extensions.push({ names: [...names], type });
     }
     addSettingTab() {
       registrations.push('settings');
     }
     addCommand(command) {
       registrations.push(command.id);
+      commands.set(command.id, command);
     }
     addRibbonIcon() {}
     registerEvent() {}
@@ -27,11 +35,14 @@ test('the committed bundle fully starts with only the Obsidian API', async () =>
     registerInterval() {}
   }
   const base = class {};
+  class ItemView {}
+  class FileView {}
   const obs = {
     Plugin,
     PluginSettingTab: base,
     Modal: base,
-    ItemView: base,
+    ItemView,
+    FileView,
     FuzzySuggestModal: base,
     parseYaml: JSON.parse,
     stringifyYaml: JSON.stringify,
@@ -56,6 +67,8 @@ test('the committed bundle fully starts with only the Obsidian API', async () =>
   plugin.app = {
     vault: {
       configDir: '.obsidian',
+      getFiles: () => [],
+      getAbstractFileByPath: () => null,
       on() {},
       adapter: {
         async exists() {
@@ -64,7 +77,7 @@ test('the committed bundle fully starts with only the Obsidian API', async () =>
       },
     },
     metadataCache: { on() {} },
-    workspace: { onLayoutReady() {}, getLeavesOfType: () => [] },
+    workspace: { onLayoutReady() {}, on() {}, getLeavesOfType: () => [] },
   };
   Object.defineProperty(plugin.app, 'plugins', {
     get() {
@@ -73,8 +86,66 @@ test('the committed bundle fully starts with only the Obsidian API', async () =>
   });
   await plugin.onload();
   assert.ok(registrations.includes('pikoboard-view'));
+  assert.ok(registrations.includes('pikoboard-file-view'));
+  assert.deepEqual(extensions, [{ names: ['pikoboard'], type: 'pikoboard-file-view' }]);
+  const overview = viewFactories.get('pikoboard-view')({});
+  const namedBoard = viewFactories.get('pikoboard-file-view')({});
+  assert.ok(overview instanceof ItemView, 'the all-tasks overview must open without any file');
+  assert.equal(
+    overview instanceof FileView,
+    false,
+    'Obsidian FileView cannot own a fileless overview',
+  );
+  assert.ok(
+    namedBoard instanceof FileView,
+    'named boards use Obsidian file loading and restoration',
+  );
+  assert.equal(overview.getViewType(), 'pikoboard-view');
+  assert.equal(namedBoard.getViewType(), 'pikoboard-file-view');
+  assert.equal(overview.getDisplayText(), 'Все задачи');
+  namedBoard.file = { path: 'Work/Plan.pikoboard', basename: 'Plan' };
+  assert.equal(namedBoard.getDisplayText(), 'Plan');
+  const overviewLeaf = { view: overview },
+    fileLeaf = { view: namedBoard };
+  plugin.app.workspace.getLeavesOfType = (type) =>
+    type === 'pikoboard-view' ? [overviewLeaf] : type === 'pikoboard-file-view' ? [fileLeaf] : [];
+  assert.deepEqual([...plugin.boardLeaves()], [overviewLeaf, fileLeaf]);
+  let revealed;
+  plugin.app.workspace.revealLeaf = async (leaf) => {
+    revealed = leaf;
+  };
+  plugin.app.workspace.getLeaf = () => {
+    throw new Error('An existing board tab must be reused');
+  };
+  await plugin.openBoard(namedBoard.file);
+  assert.equal(revealed, fileLeaf);
+  await plugin.openBoard();
+  assert.equal(revealed, overviewLeaf);
+  namedBoard.boardConfig = { id: 'work', columns: [{ value: 'later', kind: 'todo' }] };
+  let newTaskStatus;
+  namedBoard.beginCreate = (status) => {
+    newTaskStatus = status;
+  };
+  plugin.app.workspace.getActiveViewOfType = (Type) =>
+    namedBoard instanceof Type ? namedBoard : null;
+  await commands.get('create').callback();
+  assert.equal(
+    newTaskStatus,
+    'later',
+    'quick capture uses the active named board and its own columns',
+  );
+  namedBoard.boardConfig.columns.push({ value: 'review', kind: 'active' });
+  namedBoard.mode = 'focus';
+  await commands.get('create').callback();
+  assert.equal(
+    newTaskStatus,
+    'review',
+    'quick capture in focus creates an active task so it stays visible in that filter',
+  );
   assert.ok(registrations.includes('settings'));
   assert.ok(registrations.includes('create'));
+  assert.ok(registrations.includes('create-board'));
+  assert.ok(registrations.includes('all-tasks'));
   assert.equal(plugin.api().catalog.statuses().length, 3);
   plugin.onunload();
 });
@@ -87,6 +158,7 @@ function setup(data = {}, legacy) {
     PluginSettingTab: base,
     Modal: base,
     ItemView: base,
+    FileView: base,
     FuzzySuggestModal: base,
     parseYaml: JSON.parse,
     stringifyYaml: JSON.stringify,
@@ -97,7 +169,8 @@ function setup(data = {}, legacy) {
     },
   };
   const scope = {
-    require: (name) => (name === 'obsidian' ? obs : name === './core' ? C : S),
+    require: (name) =>
+      name === 'obsidian' ? obs : name === './core' ? C : require(name.replace('./', '../')),
     module: { exports: {} },
     console,
   };

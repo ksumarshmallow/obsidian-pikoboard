@@ -12,10 +12,15 @@ function fixture() {
     Plugin: base,
     PluginSettingTab: base,
     ItemView: base,
+    FileView: base,
     Modal: base,
     FuzzySuggestModal: base,
   };
-  const scope = { require: (n) => (n === 'obsidian' ? obs : C), module: { exports: {} }, console };
+  const scope = {
+    require: (n) => (n === 'obsidian' ? obs : require(n.replace('./', '../'))),
+    module: { exports: {} },
+    console,
+  };
   vm.runInNewContext(source, scope);
   const plugin = Object.create(scope.module.exports.prototype);
   const project = { path: 'Проекты/Демо-проект/Демо-проект.md', basename: 'Демо-проект' };

@@ -11,6 +11,11 @@ bundle = bundle.replace(
   "require('./task-store')",
   () => `(()=>{const module={exports:{}};${store}\nreturn module.exports;})()`,
 );
+const boards = fs.readFileSync(path.join(__dirname, 'board-store.js'), 'utf8');
+bundle = bundle.replace(
+  "require('./board-store')",
+  () => `(()=>{const module={exports:{}};${boards}\nreturn module.exports;})()`,
+);
 new (require('node:vm').Script)(bundle, { filename: 'main.js' });
 fs.writeFileSync(
   path.join(__dirname, 'main.js'),

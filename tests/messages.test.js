@@ -43,6 +43,7 @@ function fixture() {
       Plugin: base,
       PluginSettingTab: base,
       ItemView: base,
+      FileView: base,
       Modal: base,
       FuzzySuggestModal: base,
       TFile,
@@ -56,7 +57,7 @@ function fixture() {
     };
   let copied;
   const scope = {
-    require: (n) => (n === 'obsidian' ? obs : C),
+    require: (n) => (n === 'obsidian' ? obs : require(n.replace('./', '../'))),
     module: { exports: {} },
     console,
     setTimeout,
