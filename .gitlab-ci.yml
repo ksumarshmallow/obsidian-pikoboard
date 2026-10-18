@@ -20,9 +20,11 @@ plugin_tests:
   image: node:22-bookworm-slim
   script:
     - cp main.js /tmp/pikoboard-main.js
+    - cp styles.css /tmp/pikoboard-styles.css
     - npm test
     - npm run check
     - cmp /tmp/pikoboard-main.js main.js
+    - cmp /tmp/pikoboard-styles.css styles.css
   artifacts:
     name: 'PikoBoard-$CI_COMMIT_SHORT_SHA'
     paths:
