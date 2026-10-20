@@ -14,6 +14,11 @@ function positionPopup(popup, anchor) {
     (room >= Math.min(popup.offsetHeight, 200)
       ? r.bottom + 5
       : Math.max(12, r.top - popup.offsetHeight - 5)) + 'px';
+  if (popup.dataset.fitViewport === 'true') {
+    const top = r.bottom + 5 + popup.offsetHeight <= win.innerHeight - 12
+      ? r.bottom + 5 : r.top - popup.offsetHeight - 5;
+    popup.style.top = Math.max(12, Math.min(top, win.innerHeight - popup.offsetHeight - 12)) + 'px';
+  }
 }
 function floatingPopup(anchor, cls) {
   const doc = anchor.ownerDocument,

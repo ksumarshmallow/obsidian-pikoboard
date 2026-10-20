@@ -158,6 +158,7 @@ function fixture(input = {}) {
     }
     focus() {
       doc.activeElement = this;
+      this.onfocus?.();
     }
     select() {}
     requestSubmit() {
@@ -206,6 +207,7 @@ function fixture(input = {}) {
         notices.push(text);
       }
     },
+    getIconIds: () => ['lucide-inbox', 'lucide-clock', 'lucide-book-open', 'lucide-house', 'lucide-star', 'lucide-book-heart', 'other-plugin-icon', ...Array.from({ length: 150 }, (_, i) => 'lucide-test-' + String(i).padStart(3, '0'))],
     setIcon(node, name) {
       node.icon = name;
     },
@@ -247,7 +249,10 @@ function fixture(input = {}) {
       writes++;
     },
   };
+  const savedPreferences = [];
   const plugin = {
+    data: {},
+    persist: async () => { savedPreferences.push(JSON.parse(JSON.stringify(plugin.data))); },
     app: { vault },
     settings: { tasksFolder: 'Tasks', attachmentsFolder: 'Files' },
     boards: new B.BoardStore({ vault }),
@@ -266,6 +271,7 @@ function fixture(input = {}) {
     board,
     file,
     plugin,
+    savedPreferences,
     data: () => B.parseBoard(disk),
     source: () => disk,
     external: (board) => {
@@ -442,7 +448,7 @@ test('one symbol popup handles icons, custom emoji and no-icon without losing ot
     column = { label: 'Keep name', color: '#123456', icon: 'inbox' };
   f.doc.body.append(parent);
   let changed = 0;
-  const trigger = f.symbolPicker(parent, column, () => changed++, f.plugin.app);
+  const trigger = f.symbolPicker(parent, column, () => changed++, f.plugin);
   assert.equal(
     parent.querySelectorAll('input').length,
     0,
@@ -452,7 +458,7 @@ test('one symbol popup handles icons, custom emoji and no-icon without losing ot
   let popup = f.doc.body.querySelector('.pb-symbol-popover');
   popup
     .querySelectorAll('button')
-    .find((b) => b.textContent === 'Эмодзи')
+    .find((b) => b.attrs['aria-label'] === 'Эмодзи')
     .onclick();
   const input = popup.querySelector('[aria-label="Свой эмодзи"]');
   input.value = '🦉';
@@ -603,4 +609,96 @@ test('column dragging ignores controls and card drags; pointer drop and keyboard
   assert.deepEqual(changes[1], ['open', 'in-progress', true]);
   header.onkeydown(event({ key: 'ArrowLeft', altKey: true, target: header }));
   assert.equal(changes.length, 2, 'first column cannot move farther left');
+});
+
+test('full library loads in batches, search reaches later icons and keyboard selection records recents', async () => {
+  const f = fixture(), parent = new f.Element(), column = { icon: 'inbox' };
+  f.doc.body.append(parent);
+  const trigger = f.symbolPicker(parent, column, () => {}, f.plugin);
+  trigger.onclick();
+  const popup = f.doc.body.querySelector('.pb-symbol-popover');
+  const search = popup.querySelector('[aria-label="Найти иконку"]');
+  assert.equal(f.doc.activeElement, search);
+  assert.equal(popup.querySelectorAll('.pb-symbol-choice').length, 84);
+  popup.querySelector('.pb-symbol-more').onclick();
+  assert.equal(popup.querySelectorAll('.pb-symbol-choice').length, 156);
+  search.value = 'test-149';
+  search.oninput();
+  assert.equal(popup.querySelectorAll('.pb-symbol-choice').length, 1);
+  popup.onkeydown(event({ key: 'Enter', target: search }));
+  await Promise.resolve();
+  assert.equal(column.icon, 'test-149');
+  assert.deepEqual(f.savedPreferences.at(-1).iconPicker.recent, ['test-149']);
+  assert.equal(f.listeners.size, 0);
+  trigger.onclick();
+  const again = f.doc.body.querySelector('.pb-symbol-popover');
+  again.querySelector('[aria-label="Недавние иконки"]').onclick();
+  assert.equal(again.querySelectorAll('.pb-symbol-choice').length, 1);
+  assert.equal(again.querySelector('.pb-symbol-choice').dataset.icon, 'test-149');
+});
+
+test('favorites persist across picker instances without selecting the icon or editing the column', async () => {
+  const f = fixture(), parent = new f.Element(), column = { icon: 'inbox', label: 'Keep' };
+  f.doc.body.append(parent);
+  let changes = 0;
+  const trigger = f.symbolPicker(parent, column, () => changes++, f.plugin);
+  trigger.onclick();
+  let popup = f.doc.body.querySelector('.pb-symbol-popover');
+  const search = popup.querySelector('[aria-label="Найти иконку"]');
+  search.value = 'дом'; search.oninput();
+  popup.querySelector('.pb-symbol-choice').onmouseenter();
+  await popup.querySelector('.pb-symbol-favorite').onclick();
+  assert.deepEqual(f.savedPreferences.at(-1).iconPicker.favorites, ['house']);
+  assert.equal(column.icon, 'inbox');
+  assert.equal(changes, 0);
+  popup.onkeydown(event({ key: 'Escape' }));
+  const reloaded = JSON.parse(JSON.stringify(f.plugin.data));
+  f.plugin.data = reloaded;
+  const other = f.symbolPicker(parent, { icon: '' }, () => {}, f.plugin);
+  other.onclick();
+  popup = f.doc.body.querySelector('.pb-symbol-popover');
+  popup.querySelector('[aria-label="Избранные иконки"]').onclick();
+  const choice = popup.querySelector('.pb-symbol-choice');
+  assert.equal(choice.dataset.icon, 'house');
+  choice.onmouseenter();
+  await popup.querySelector('.pb-symbol-favorite').onclick();
+  assert.equal(popup.querySelectorAll('.pb-symbol-choice').length, 0);
+  assert.equal(popup.querySelector('.pb-symbol-empty').textContent, 'Пока нет избранного');
+});
+
+test('failed preference save rolls back favorites, reports the problem and leaves the picker usable', async () => {
+  const f = fixture(), parent = new f.Element(), column = { icon: 'inbox' };
+  f.doc.body.append(parent);
+  f.plugin.data.iconPicker = { favorites: [], recent: ['clock'] };
+  f.plugin.persist = async () => { throw new Error('Disk unavailable'); };
+  f.symbolPicker(parent, column, () => {}, f.plugin).onclick();
+  const popup = f.doc.body.querySelector('.pb-symbol-popover');
+  await popup.querySelector('.pb-symbol-favorite').onclick();
+  assert.deepEqual(f.plugin.data.iconPicker.favorites, []);
+  assert.deepEqual(f.plugin.data.iconPicker.recent, ['clock']);
+  assert.equal(popup.querySelector('.pb-symbol-favorite').disabled, false);
+  assert.equal(f.notices.length, 1);
+  assert.equal(column.icon, 'inbox');
+});
+
+test('empty search cannot select a stale icon; keyboard navigation and closing clean up the popup', () => {
+  const f = fixture(), parent = new f.Element(), column = { icon: 'inbox' };
+  f.doc.body.append(parent);
+  const trigger = f.symbolPicker(parent, column, () => {}, f.plugin);
+  trigger.onclick();
+  const popup = f.doc.body.querySelector('.pb-symbol-popover');
+  const search = popup.querySelector('[aria-label="Найти иконку"]');
+  search.value = 'nothing-matches'; search.oninput();
+  popup.onkeydown(event({ key: 'Enter', target: search }));
+  assert.equal(column.icon, 'inbox');
+  assert.ok(f.doc.body.querySelector('.pb-symbol-popover'));
+  search.value = 'book'; search.oninput();
+  popup.onkeydown(event({ key: 'ArrowDown', target: search }));
+  assert.equal(f.doc.activeElement.dataset.icon, 'book-heart');
+  popup.onkeydown(event({ key: 'ArrowRight', target: f.doc.activeElement }));
+  assert.equal(f.doc.activeElement.dataset.icon, 'book-open');
+  popup.onkeydown(event({ key: 'Escape' }));
+  assert.equal(f.doc.body.querySelector('.pb-symbol-popover'), null);
+  assert.equal(f.doc.activeElement, trigger);
+  assert.equal(f.listeners.size, 0);
 });

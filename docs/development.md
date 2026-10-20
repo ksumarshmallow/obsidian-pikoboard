@@ -20,6 +20,7 @@ npm run build  # Только пересобрать main.js и styles.css
 | Создание доски | `src/features/boards/create-board.js` |
 | Добавление, изменение и удаление столбцов, папки доски | `src/features/boards/board-settings.js` |
 | Палитра и выбор значка столбца | `src/features/boards/column-controls.js` |
+| Библиотека встроенных иконок, поиск и избранное | `src/ui/icon-picker.js`, `src/domain/icons.js` |
 | Окно задачи, описание и свойства | `src/features/tasks/task-modal.js` |
 | Общий черновик комментария и следующего шага | `src/features/journal/model.js` |
 | Поле ввода комментариев и материалов | `src/features/journal/composer.js` |

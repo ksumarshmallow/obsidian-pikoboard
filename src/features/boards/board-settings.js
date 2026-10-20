@@ -89,7 +89,7 @@ class AddColumnModal extends BoardEditModal {
     const paint = () => {
       preview.style.background = tint(this.column.color, this.column.opacity);
     };
-    symbolPicker(preview, this.column, paint, this.app);
+    symbolPicker(preview, this.column, paint, this.plugin);
     const name = el(preview, 'input', 'pb-config-column-name');
     name.placeholder = 'Название столбца';
     name.setAttribute('aria-label', 'Название столбца');
@@ -156,7 +156,7 @@ class BoardSettingsModal extends BoardEditModal {
         row.style.background = tint(c.color, c.opacity);
       };
       const top = el(row, 'div', 'pb-config-column-top');
-      symbolPicker(top, c, paint, this.app);
+      symbolPicker(top, c, paint, this.plugin);
       const title = el(top, 'input', 'pb-config-column-name');
       title.value = c.label;
       title.setAttribute('aria-label', 'Название столбца ' + (index + 1));
