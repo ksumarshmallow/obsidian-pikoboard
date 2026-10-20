@@ -2085,6 +2085,12 @@ body:is([data-pikoboard-appearance="piko"], [data-pikoboard-appearance="piko-lig
   background: var(--pb-panel);
   min-width: 0;
 }
+.pikoboard .pb-card-journal > .pb-next-step {
+  margin: 10px 10px 0;
+}
+.pikoboard .pb-overview .pb-card-journal > .pb-next-step {
+  margin: 8px 8px 0;
+}
 .pikoboard .pb-feed {
   height: auto;
   max-height: 176px;

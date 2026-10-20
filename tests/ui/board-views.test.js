@@ -101,6 +101,10 @@ class Element {
   setAttribute(name, value) {
     this.attributes[name] = String(value);
   }
+  addEventListener(name, listener) {
+    this.listeners ||= new Map();
+    this.listeners.set(name, listener);
+  }
   getAttribute(name) {
     return this.attributes[name];
   }
@@ -566,6 +570,61 @@ test('history change then undo during rendering keeps the previously committed f
   await pending;
   assert.equal(container.textContent, committed);
   assert.equal(f.components[1].loaded, false);
+});
+
+test('one card disclosure hides and reveals the next step and history together without losing the draft', async () => {
+  const f = fixture(async (app, text, node) => {
+    const paragraph = new Element('p');
+    paragraph.textContent = text;
+    node.append(paragraph);
+  });
+  const file = Object.assign(new f.obs.TFile(), { path: 'Task.md', basename: 'Task' });
+  const listeners = new Set();
+  const model = {
+    next: '- [ ] Read the notes', update: 'Unsent comment',
+    subscribe(fn) { listeners.add(fn); fn(); return () => listeners.delete(fn); },
+    async prepareNext() { this.nextDraft = this.next; this.nextBase = this.next; },
+    async save() {},
+  };
+  let reads = 0;
+  const app = { vault: { getAbstractFileByPath: () => file } };
+  const plugin = {
+    app, journal: () => model,
+    async history(feed) { reads++; feed.textContent = 'Previous comment'; },
+  };
+  const view = new f.BoardView(null, plugin);
+  view.app = app;
+  const card = view.makeCard({ path: file.path });
+  await tick();
+  assert.equal(card.journal.hidden, true);
+  assert.equal(card.toggle.getAttribute('aria-expanded'), 'false');
+  assert.equal(card.nextWrap.parentNode, card.journal);
+  assert.equal(card.feed.parentNode, card.journal);
+  assert.equal(card.meta.parentNode, card.node);
+  assert.equal(card.head.parentNode, card.node);
+  assert.equal(card.node.querySelectorAll('.pb-next-toggle').length, 0);
+  await card.toggle.onclick();
+  assert.equal(card.journal.hidden, false);
+  assert.equal(card.nextWrap.hidden, false);
+  assert.equal(card.nextWrap.querySelector('.pb-next-text').textContent, model.next);
+  assert.equal(card.feed.textContent, 'Previous comment');
+  assert.equal(card.composer.input.value, 'Unsent comment');
+  await card.nextWrap.querySelector('.pb-next-edit').onclick();
+  assert.equal(card.composer.mode, 'next');
+  assert.equal(card.composer.input.value, model.next);
+  await card.toggle.onclick();
+  assert.equal(card.journal.hidden, true);
+  model.next = '- [x] Read the notes';
+  for (const listener of listeners) listener();
+  await tick();
+  assert.equal(card.journal.hidden, true);
+  await card.toggle.onclick();
+  assert.equal(card.journal.hidden, false);
+  assert.equal(card.nextWrap.querySelector('.pb-next-text').textContent, model.next);
+  assert.equal(model.update, 'Unsent comment');
+  assert.equal(reads, 3);
+  card.nextWrap._dispose();
+  card.composer.dispose();
 });
 
 test('next-step rendering ignores late old Markdown and disposes its component', async () => {

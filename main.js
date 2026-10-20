@@ -3508,7 +3508,7 @@ const BoardBase = (Base) =>
         () => new TaskModal(this.plugin, file).open(),
         'pb-task-title',
       );
-      c.toggle = icon(head, 'chevron-down', 'История', async () => {
+      c.toggle = icon(head, 'chevron-down', 'Подробности задачи', async () => {
         const open = !this.expanded.has(file.path);
         if (open) this.expanded.add(file.path);
         else this.expanded.delete(file.path);
@@ -3619,15 +3619,15 @@ const BoardBase = (Base) =>
       };
       c.meta = el(node, 'div', 'pb-meta');
       if (this.archive) button(node, 'Вернуть', () => this.archiveTask(c), 'pb-restore');
-      c.nextWrap = nextStep(node, this.plugin, file, async () => {
+      c.journal = el(node, 'div', 'pb-card-journal');
+      c.journal.hidden = !this.expanded.has(file.path);
+      c.nextWrap = nextStep(c.journal, this.plugin, file, async () => {
         this.expanded.add(file.path);
         c.journal.hidden = false;
         c.toggle.setAttribute('aria-expanded', 'true');
         await c.composer.setMode('next');
         await this.plugin.history(c.feed, file, this);
       });
-      c.journal = el(node, 'div', 'pb-card-journal');
-      c.journal.hidden = !this.expanded.has(file.path);
       c.feed = el(c.journal, 'div', 'pb-feed');
       c.feed.setAttribute('role', 'region');
       c.feed.setAttribute('aria-label', 'История задачи');
