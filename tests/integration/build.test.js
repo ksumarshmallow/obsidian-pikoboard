@@ -6,6 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const vm = require('node:vm');
 const { bundle } = require('../../scripts/bundle.js');
+const { artifacts } = require('../../scripts/build.js');
 
 function fixture(t, files) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pikoboard-build-'));
@@ -71,9 +72,11 @@ test('build rejects missing, invalid and unexpected runtime dependencies before 
 test('installable JavaScript and styles reproduce from the documented source paths', () => {
   const root = path.resolve(__dirname, '../..');
   const source = path.join(root, 'src');
-  const output = bundle(path.join(source, 'plugin.js'), source);
+  const output = artifacts(root)['main.js'];
   assert.equal(output, fs.readFileSync(path.join(root, 'main.js'), 'utf8'));
-  assert.equal(output, bundle(path.join(source, 'plugin.js'), source));
+  assert.equal(output, artifacts(root)['main.js']);
+  assert.ok(output.includes('Copyright 2024 Matthew Meyers, Fevol'));
+  assert.ok(output.includes('Copyright (c) 2026 ksundel'));
   assert.equal(
     fs.readFileSync(path.join(root, 'styles.css'), 'utf8'),
     fs.readFileSync(path.join(source, 'styles/pikoboard.css'), 'utf8'),

@@ -1,0 +1,46 @@
+name: Draft release
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Existing version tag, matching manifest.json (no v prefix)
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: pikoboard-release
+  cancel-in-progress: false
+jobs:
+  draft:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      RELEASE_VERSION: ${{ inputs.version }}
+    steps:
+      - name: Validate tag format
+        run: '[[ "$RELEASE_VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]'
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ inputs.version }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm run release:check -- "$RELEASE_VERSION"
+      - run: npm test
+      - run: npm run check
+      - run: npm run release:pack -- "$RELEASE_VERSION"
+      - run: git diff --exit-code -- main.js styles.css
+      - name: Create draft with reviewed assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release create "$RELEASE_VERSION" \
+            dist/pikoboard/main.js dist/pikoboard/manifest.json dist/pikoboard/styles.css \
+            dist/pikoboard/LICENSE dist/pikoboard/THIRD-PARTY-LICENSES.txt dist/pikoboard/SHA256SUMS \
+            --verify-tag --draft --title "PikoBoard $RELEASE_VERSION" \
+            --notes-file docs/release-notes.md

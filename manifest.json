@@ -1,9 +1,9 @@
 {
   "id": "pikoboard",
   "name": "PikoBoard",
-  "version": "0.11.0",
-  "minAppVersion": "1.12.2",
-  "description": "Самостоятельная доска задач: проекты, сроки, комментарии с материалами и следующий шаг.",
+  "version": "0.12.0",
+  "minAppVersion": "1.14.4",
+  "description": "Plan tasks on customizable boards with projects, due dates, checklists and a journal in each task note.",
   "author": "ksumarshmallow",
   "isDesktopOnly": false,
   "authorUrl": "https://github.com/ksumarshmallow"

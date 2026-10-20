@@ -55,7 +55,7 @@ class DeleteConfirmModal extends Modal {
     this.contentEl.addClass('pikoboard');
     el(this.contentEl, 'h3', '', 'Удалить задачу?');
     el(this.contentEl, 'p', 'pb-delete-name', this.taskTitle);
-    el(this.contentEl, 'p', 'pb-delete-hint', 'Файл будет перемещён в корзину хранилища.');
+    el(this.contentEl, 'p', 'pb-delete-hint', 'Файл будет удалён способом, выбранным в настройках Obsidian.');
     const actions = el(this.contentEl, 'div', 'pb-delete-actions');
     const cancel = button(actions, 'Отмена', () => this.close());
     button(

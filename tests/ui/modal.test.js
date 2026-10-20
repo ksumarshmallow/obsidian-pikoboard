@@ -181,7 +181,7 @@ test('external refresh cannot replace a focused plain description field', async 
   await m.syncExternal();
   assert.equal(m.session.value, 'Old');
 });
-test('trash waits for open task saves and uses recoverable vault trash', async () => {
+test('deletion waits for open task saves and delegates to the Obsidian deletion preference', async () => {
   const { m, plugin } = setup();
   const gate = defer();
   let trashed = false;
@@ -191,10 +191,9 @@ test('trash waits for open task saves and uses recoverable vault trash', async (
   };
   plugin.queue = async (file, job) => job();
   plugin.app = {
-    vault: {
-      trash: async (file, system) => {
+    fileManager: {
+      trashFile: async (file) => {
         assert.equal(file, m.file);
-        assert.equal(system, false);
         trashed = true;
       },
     },
@@ -410,4 +409,22 @@ test('delete confirmation cancels without touching the task and only deletes aft
   second.close();
   assert.equal(await accepted, true);
   assert.equal(deletes, 1);
+});
+
+test('unavailable embedded editor retains the textarea and unsaved description', () => {
+  const { m, doc } = setup('Original');
+  const fallback = m.editor;
+  let removed = false, hostRemoved = false;
+  fallback.value = 'Unsaved draft';
+  fallback.remove = () => { removed = true; };
+  doc.createElement = () => ({ ownerDocument: doc, remove() { hostRemoved = true; } });
+  m.bodyWrap = { append() {} };
+  m.app = {};
+  m.session.set('Unsaved draft');
+  m.mountRichEditor();
+  assert.equal(m.editor, fallback);
+  assert.equal(m.editor.value, 'Unsaved draft');
+  assert.equal(removed, false);
+  assert.equal(hostRemoved, true);
+  assert.equal(m.rich, null);
 });

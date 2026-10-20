@@ -1,0 +1,28 @@
+name: Check plugin
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # Check committed assets before npm test rebuilds them.
+      - run: npm run release:check
+      - run: npm test
+      - run: npm run check
+      - run: npm run release:pack
+      - run: git diff --exit-code -- main.js styles.css
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pikoboard
+          path: dist/pikoboard/
+          if-no-files-found: error

@@ -92,35 +92,6 @@ function settingsFrom(saved = {}) {
   result.appearance = ['piko', 'piko-light'].includes(result.appearance) ? result.appearance : 'obsidian';
   return result;
 }
-function migrateSettings(legacy = {}) {
-  const completed = (legacy.customStatuses || []).filter((s) => s.isCompleted);
-  const done = completed.find((s) => s.value === 'done') || completed[0];
-  const mapped = {};
-  for (const key of Object.keys(FIELDS)) {
-    const value = legacy.fieldMapping?.[key];
-    if (typeof value === 'string' && value.trim()) mapped[key] = value;
-  }
-  const pick = {};
-  for (const key of [
-    'tasksFolder',
-    'taskTag',
-    'taskIdentificationMethod',
-    'taskPropertyName',
-    'taskPropertyValue',
-  ])
-    if (typeof legacy[key] === 'string') pick[key] = legacy[key];
-  return settingsFrom({
-    ...pick,
-    fieldMapping: mapped,
-    completedStatuses: completed.map((s) => s.value),
-    ...(done
-      ? {
-          autoArchive: !!done.autoArchive,
-          archiveDays: done.autoArchiveDelay > 0 ? done.autoArchiveDelay / 1440 : 7,
-        }
-      : {}),
-  });
-}
 function splitDocument(text, parseYaml) {
   const match = text.match(/^(\uFEFF?)---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
   if (!match) {
@@ -139,7 +110,7 @@ function dateValue(value) {
 }
 function completionTime(value) {
   const date = dateValue(value);
-  // Legacy TaskNotes dates have no time: wait until the end of that local day.
+  // Date-only completion values become eligible after the end of that local day.
   return Date.parse(/^\d{4}-\d{2}-\d{2}$/.test(date || '') ? date + 'T23:59:59.999' : date);
 }
 class TaskStore {
@@ -464,7 +435,6 @@ module.exports = {
   FIELDS,
   STATUSES,
   settingsFrom,
-  migrateSettings,
   folderPath,
   splitDocument,
   completionTime,

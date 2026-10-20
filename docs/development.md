@@ -1,76 +1,68 @@
-# Разработка PikoBoard
+# Development
 
-Требуется Node.js 18 или новее. У сборки и тестов нет npm-зависимостей.
+Use Node.js 18 or newer; CI runs Node.js 22. There are no npm build or test dependencies, so `npm install` is unnecessary.
 
 ```sh
-npm test        # Пересобрать плагин и запустить все тесты
-npm run check  # Проверить синтаксис исходников, сборки, скриптов и тестов
-npm run build  # Только пересобрать main.js и styles.css
+git clone https://github.com/ksumarshmallow/obsidian-pikoboard.git
+cd obsidian-pikoboard
+npm test
+npm run check
+npm run release:check
 ```
 
-## Где менять код
+## Layout
 
-| Задача | Модуль |
+| Path | Responsibility |
 | --- | --- |
-| Команды Obsidian, запуск, события хранилища | `src/plugin.js` |
-| Markdown, чеклисты, история, защита от конфликтов текста | `src/domain/tasks.js` |
-| Сохранение файлов задач, свойства и автоархив | `src/storage/task-store.js` |
-| Файлы досок, столбцы и пути хранения | `src/storage/board-store.js` |
-| Отрисовка доски, фильтры, перетаскивание | `src/features/boards/board-view.js` |
-| Создание доски | `src/features/boards/create-board.js` |
-| Добавление, изменение и удаление столбцов, папки доски | `src/features/boards/board-settings.js` |
-| Палитра и выбор значка столбца | `src/features/boards/column-controls.js` |
-| Библиотека встроенных иконок, поиск и избранное | `src/ui/icon-picker.js`, `src/domain/icons.js` |
-| Окно задачи, описание и свойства | `src/features/tasks/task-modal.js` |
-| Общий черновик комментария и следующего шага | `src/features/journal/model.js` |
-| Поле ввода комментариев и материалов | `src/features/journal/composer.js` |
-| Отображение следующего шага и его чеклиста | `src/features/journal/next-step.js` |
-| Кнопки, меню, диалоги, форматирование | `src/ui/` |
-| Встроенный редактор Obsidian | `src/ui/rich-editor.js` |
-| Переключение палитры и дополнительные окна Obsidian | `src/ui/appearance.js` |
-| Состояние срока по местной дате и оформление плашки | `src/domain/due-dates.js`, `src/ui/due-date.js` |
-| Поиск и сочетания фильтров | `src/domain/filters.js`, `src/features/boards/filter-bar.js` |
-| Сохранённые подборки и очередь их записи | `src/storage/saved-filters.js` |
-| Ввод тегов плашками и очередь изменений | `src/features/tasks/tag-editor.js` |
-| Отмена действий, сериализация изменений и позиции карточек | `src/features/tasks/task-actions.js` |
-| Точечное восстановление свойств и проверка конфликтов | `src/storage/task-change.js`, `src/storage/task-store.js` |
-| Шаблоны задач, очистка истории и сброс чеклистов | `src/storage/task-templates.js` |
-| Выбор шаблона при быстром создании | `src/features/tasks/template-picker.js` |
-| Общие настройки плагина | `src/settings/settings-tab.js` |
-| Цвета, отступы, размеры и состояния элементов | `src/styles/pikoboard.css` |
+| `src/plugin.js` | Lifecycle, commands and integration with Obsidian |
+| `src/domain/` | Pure task, Markdown, filter, icon and ordering logic |
+| `src/storage/` | Vault persistence, board definitions, templates and conflict checks |
+| `src/features/boards/` | Board views, column controls, filters and board creation |
+| `src/features/tasks/` | Task editor, properties, templates and undo |
+| `src/features/journal/` | Shared draft, next step and journal composer |
+| `src/ui/` | Reusable controls, menus, dialogs, appearance and editor adapter |
+| `src/settings/` | Plugin settings |
+| `src/styles/pikoboard.css` | Source styles |
+| `scripts/` | Build, syntax and release checks |
+| `tests/` | Domain, storage, UI and integration tests |
 
-## Границы модулей
+The domain layer has no Obsidian or DOM dependency. Storage receives Vault and YAML APIs through its constructor. UI utilities do not import features or the plugin entry point. Features receive the plugin instance; they do not import it back.
 
-- `domain` содержит чистую логику: не читает хранилище и не обращается к DOM или Obsidian.
-- `storage` получает доступ к хранилищу и YAML через переданные зависимости. Не открывает окна и не меняет интерфейс.
-- `ui` содержит общие элементы и адаптер редактора; не импортирует `features` или сам плагин.
-- `features` отвечает за пользовательские сценарии. Экземпляр плагина передаётся в конструктор; модули не импортируют `src/plugin.js` обратно.
-- `src/plugin.js` связывает хранилище, представления, команды и события. Общая модель журнала синхронизирует черновик между доской и окном задачи.
+## Build and install locally
 
-Это CommonJS-модули с явными импортами и экспортами. Для нового компонента используйте ближайшую папку по назначению; отдельная папка для каждого класса не нужна.
+```sh
+npm run build
+```
 
-## Сборка и установка
+The build bundles static CommonJS imports into `main.js` and copies source CSS into `styles.css`. Only `obsidian` and `@codemirror/view` remain external; Obsidian provides them. The bundle is readable, with no runtime `eval` or dynamic code downloads. License notices are included in the JavaScript because directory installations download only runtime assets.
 
-`scripts/build.js` собирает все локальные зависимости `src/plugin.js` в корневой `main.js` и копирует исходный CSS в `styles.css`. `scripts/bundle.js` поддерживает статические вызовы `require('…')`; динамические пути и загрузка произвольных npm-модулей не используются. Внешними остаются только `obsidian` и `@codemirror/view`, предоставляемые Obsidian.
+Generated `main.js` and `styles.css` are committed so a Git clone is directly installable. Edit `src/`, rebuild, and include generated changes in the same commit. Release checks compare the files against a fresh in-memory build.
 
-Сборка сохраняет исходный код модулей, их область видимости и один экземпляр экспорта на модуль. Она не использует `eval` и не требует папки `src/` на компьютере пользователя. Порядок CSS-правил сохраняется.
+Use a separate test vault. Copy the five files produced by `npm run release:pack` from `dist/pikoboard/` to that vault's plugin folder. Disable PikoBoard before replacement and enable it afterward. Never copy the source checkout over a live plugin's `data.json`.
 
-Цвета компонентов задаются через `--pb-*` в начале `src/styles/pikoboard.css`. По умолчанию они ссылаются на переменные Obsidian; фиксированные цвета сосредоточены в пресетах `pikoboard-dark` и `pikoboard-light`. Пресет применяется только внутри элементов плагина, включая меню и модальные окна. Контроллер ставит маркер оформления в основном и дополнительных окнах и удаляет его при выгрузке. Смена палитры не перерисовывает доску, чтобы не терять фокус и черновики.
+## Persistence and lifecycle
 
-Для выпуска коммитятся исходники и пересобранные `main.js` / `styles.css`. GitLab CI заново собирает их и проверяет совпадение с закоммиченными файлами. `manifest.json` и `versions.json` – метаданные установки и совместимости; их место в корне.
+Task updates run inside `Vault.process` with Obsidian's YAML codec. The atomic callback checks the current document and changes only the intended properties or body section. This allows conflict-sensitive undo and journal writes to preserve independent edits in the same file. Unknown properties are retained; YAML formatting may be normalized.
 
-## Тесты
+`TaskActions` serializes property changes, moves and undo. Its one-entry in-memory receipt contains changed fields and card positions. Undo checks expected values inside a new atomic write. New text and unrelated properties survive; a conflicting edit is rejected. Board settings and file deletion do not enter this stack.
 
-- `tests/domain/` – работа с текстом, чеклистами, тегами и порядком задач.
-- `tests/storage/` – чтение и запись, миграции, конфликты и архивирование.
-- `tests/ui/` – сценарии ввода, меню, столбцов, черновиков и окна задачи.
-- `tests/integration/` – взаимодействие хранилищ, фильтров, запуск готового плагина и сборка.
-- `tests/helpers/modules.js` – изолированная загрузка модулей с подставными API Obsidian и DOM. Тесты получают настоящие экспорты модулей, без дописывания кода в исходники.
+`JournalModel` owns the draft shared by the board and modal. Pending writes are flushed before closing editors or deleting tasks. File deletion uses `FileManager.trashFile`, respecting the vault preference. Metadata and vault listeners use `registerEvent`; the archive timer uses `registerInterval`.
 
-Перед публикацией выполните обе проверки выше. Для изменений интерфейса дополнительно проверьте сценарий в отдельном тестовом хранилище Obsidian. Не помещайте в репозиторий реальные заметки, `data.json` или резервные копии хранилищ.
+The rich description editor is the one deliberate private-API dependency. `src/ui/rich-editor.js` obtains the embedded Markdown editor constructor, checks its shape and caches it per app. Temporary widgets and editor instances are disposed on failure and close. `task-modal.js` retains a textarea until the formatted editor is mounted successfully. Recheck this adapter on every supported Obsidian version; API compatibility is not guaranteed by the public plugin API.
 
-## Отмена действий
+## Styling and input
 
-`TaskActions` хранит одно последнее действие в памяти и сериализует изменения свойств, переносы и отмену. Перенос объединяет статус и порядок карточки. `TaskStore.update` формирует квитанцию изменённых свойств только после успешного `Vault.process`; `undoChange` сравнивает ожидаемые значения внутри нового `Vault.process` и возвращает только эти свойства, сохраняя тело заметки и независимые правки. Позиции привязаны к объектам файлов, чтобы переживать переименование. Новые карточки не удаляются при возврате порядка.
+Use the `--pb-*` tokens and keep styles scoped to PikoBoard. `System` inherits Obsidian variables. Fixed palette values belong in the two PikoBoard presets, not individual components. Preset markers are applied to open Obsidian windows and removed on unload.
 
-Уведомление и стрелка на доске привязаны к конкретному действию, поэтому устаревшая кнопка не отменит более новое изменение. Нет глобального обработчика Cmd/Ctrl+Z. Автоархив не создаёт уведомлений или действий отмены. Создание и удаление файлов, содержимое редактора и конфигурация доски в эту отмену не входят.
+Do not recreate an active editor to change appearance. Keep text selection, focus and drafts intact. Use labeled buttons for icon actions, keyboard navigation in menus and visible focus states. Do not add default global hotkeys that conflict with Obsidian.
+
+## Tests and review
+
+- `npm test` builds and runs Node's test runner against the actual modules with mock host APIs.
+- `npm run check` checks JavaScript syntax in source, tests, scripts and the generated bundle.
+- `npm run release:check` validates metadata, required files, licenses and reproducible assets.
+- `npm run release:pack` creates an allowlisted distribution with checksums. It performs no upload.
+
+Automated fixtures cover storage, conflicting writes, drafts, menus, task movement, templates, undo, startup and release packaging. They do not simulate the whole Obsidian renderer. Use the manual matrix in [Releasing](releasing.md) for host behavior and visual changes.
+
+Keep real notes, vault configuration, backups and plugin state out of source control. Screenshots must use synthetic tasks. For a pull request, explain the user-visible change and how you checked it; include a screenshot when the interface changed.

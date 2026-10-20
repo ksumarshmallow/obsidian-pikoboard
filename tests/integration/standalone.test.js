@@ -150,7 +150,7 @@ test('the committed bundle fully starts with only the Obsidian API', async () =>
   assert.equal(plugin.api().catalog.statuses().length, 3);
   plugin.onunload();
 });
-function setup(data = {}, legacy) {
+function setup(data = {}) {
   const base = class {},
     notices = [],
     calls = [];
@@ -184,18 +184,13 @@ function setup(data = {}, legacy) {
   plugin.app = {
     vault: {
       configDir: '.custom-config',
-      adapter: {
-        async exists(path) {
-          calls.push(path);
-          return legacy !== undefined;
-        },
-        async read() {
-          return typeof legacy === 'string' ? legacy : JSON.stringify(legacy);
-        },
+      get adapter() {
+        calls.push('adapter');
+        throw Error('Startup must not inspect other plugins or hidden files');
       },
     },
   };
-  // Any accidental dependency on the running TaskNotes plugin fails immediately.
+  // Startup must not depend on another community plugin.
   Object.defineProperty(plugin.app, 'plugins', {
     get() {
       throw Error('Community plugins are unavailable');
@@ -203,7 +198,7 @@ function setup(data = {}, legacy) {
   });
   return { plugin, notices, calls };
 }
-test('first launch works in a clean vault without TaskNotes or other community plugins', async () => {
+test('first launch is self-contained and preserves drafts and order', async () => {
   const { plugin, calls } = setup({
     drafts: { 'Example.md': { body: 'Keep draft' } },
     order: ['Example.md'],
@@ -216,44 +211,18 @@ test('first launch works in a clean vault without TaskNotes or other community p
   assert.deepEqual([...plugin.systemTags()], ['task', 'archived']);
   assert.equal(plugin.data.drafts['Example.md'].body, 'Keep draft');
   assert.equal(plugin.data.order[0], 'Example.md');
-  assert.deepEqual(calls, ['.custom-config/plugins/tasknotes/data.json']);
+  assert.deepEqual(calls, []);
 });
-test('one-time migration copies only storage settings and archive deadlines, retaining drafts and order', async () => {
-  const { plugin } = setup(
-    { order: ['Example.md'], drafts: { 'Example.md': { update: 'Draft' } } },
-    {
-      tasksFolder: 'Inbox',
-      taskTag: 'todo',
-      apiToken: 'not imported',
-      fieldMapping: { status: 'state', unrelated: 'ignored' },
-      customStatuses: [
-        { value: 'done', isCompleted: true, autoArchive: true, autoArchiveDelay: 10080 },
-      ],
-      autoArchiveQueue: [{ taskPath: 'Example.md', archiveAfterTimestamp: 1768000000000 }],
-    },
-  );
-  await plugin.initializeStorage();
-  assert.equal(plugin.settings.tasksFolder, 'Inbox');
-  assert.equal(plugin.settings.fieldMapping.status, 'state');
-  assert.equal(plugin.settings.apiToken, undefined);
-  assert.equal(plugin.settings.fieldMapping.unrelated, undefined);
-  assert.equal(plugin.data.archiveSchedule['Example.md'].after, 1768000000000);
-  assert.equal(plugin.data.drafts['Example.md'].update, 'Draft');
-});
-test('subsequent launches do not read TaskNotes settings again', async () => {
-  const { plugin, calls } = setup(
-    { settings: S.settingsFrom({ tasksFolder: 'My tasks' }) },
-    { tasksFolder: 'Old folder' },
-  );
+test('existing settings and pending archive deadlines survive startup without external reads', async () => {
+  const { plugin, calls } = setup({
+    settings: S.settingsFrom({ tasksFolder: 'My tasks', fieldMapping: { status: 'state' } }),
+    archiveSchedule: { 'Example.md': { after: 1768000000000 } },
+  });
   await plugin.initializeStorage();
   assert.deepEqual(calls, []);
   assert.equal(plugin.settings.tasksFolder, 'My tasks');
-});
-test('an unreadable legacy config reports the fallback without preventing standalone startup', async () => {
-  const { plugin, notices } = setup({}, '{broken');
-  await plugin.initializeStorage();
-  assert.equal(notices.length, 1);
-  assert.equal(plugin.settings.tasksFolder, 'Задачи');
+  assert.equal(plugin.settings.fieldMapping.status, 'state');
+  assert.equal(plugin.data.archiveSchedule['Example.md'].after, 1768000000000);
 });
 
 test('an existing installation without an appearance inherits Obsidian and preserves an explicit preset', async () => {

@@ -170,8 +170,6 @@ class TaskModal extends Modal {
       this.rich = richEditor(this.app, host, this.session.value, () => {
         if (!this.settingRich && this.editor === host) this.inputBody();
       });
-      fallback.remove();
-      this.editor = host;
       host._rich = true;
       Object.defineProperty(host, 'value', {
         get: () => this.rich.editor.getValue(),
@@ -191,7 +189,16 @@ class TaskModal extends Modal {
           this.rich.editor.offsetToPos(end),
         );
       host.onfocusout = () => this.flushSafe();
+      this.editor = host;
+      fallback.remove();
     } catch (e) {
+      try {
+        this.rich?.dispose();
+      } catch (cleanupError) {
+        console.error('PikoBoard editor cleanup', cleanupError);
+      }
+      this.rich = null;
+      this.editor = fallback;
       host.remove();
       console.error('Embedded editor unavailable', e);
       new Notice('Редактор Obsidian не загрузился. Описание доступно в текстовом поле.');

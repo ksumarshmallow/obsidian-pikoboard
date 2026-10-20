@@ -166,23 +166,8 @@ class PikoBoard extends Plugin {
   }
   async initializeStorage() {
     if (!this.data.settings) {
-      const legacyPath = this.app.vault.configDir + '/plugins/tasknotes/data.json';
-      let legacy = {};
-      if (await this.app.vault.adapter.exists(legacyPath)) {
-        try {
-          legacy = JSON.parse(await this.app.vault.adapter.read(legacyPath));
-        } catch (e) {
-          new Notice(
-            'Настройки старого хранилища задач не прочитаны. Проверьте папку в настройках PikoBoard.',
-          );
-        }
-      }
-      this.data.settings = S.migrateSettings(legacy);
-      this.data.archiveSchedule = {};
-      for (const item of legacy.autoArchiveQueue || []) {
-        if (typeof item.taskPath === 'string' && Number.isFinite(item.archiveAfterTimestamp))
-          this.data.archiveSchedule[item.taskPath] = { after: item.archiveAfterTimestamp };
-      }
+      this.data.settings = S.settingsFrom();
+      this.data.archiveSchedule ||= {};
       await this.persist();
     }
     this.settings = S.settingsFrom(this.data.settings);
@@ -667,7 +652,7 @@ class PikoBoard extends Plugin {
   async trashTask(file) {
     for (const modal of [...this.modals])
       if (modal.file === file && !(await modal.close())) return false;
-    await this.queue(file, () => this.app.vault.trash(file, false));
+    await this.queue(file, () => this.app.fileManager.trashFile(file));
     const journal = this.journals?.get(file);
     if (journal) journal.deleted = true;
     this.journals?.delete(file);
@@ -675,7 +660,7 @@ class PikoBoard extends Plugin {
     await this.persist();
     this.noteCache.delete(file.path);
     this.refresh();
-    new Notice('Задача перемещена в корзину хранилища');
+    new Notice('Задача удалена');
     return true;
   }
   newTemplate(file) {

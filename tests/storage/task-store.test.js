@@ -4,7 +4,6 @@ const assert = require('node:assert/strict');
 const {
   TaskStore,
   settingsFrom,
-  migrateSettings,
   folderPath,
   splitDocument,
 } = require('../../src/storage/task-store.js');
@@ -271,19 +270,15 @@ test('non-task notes and missing files cannot be accidentally updated', async ()
   await assert.rejects(f.store.tasks.update('Missing.md', { title: 'Oops' }), /не найдена/);
   assert.equal(f.disk.get('Note.md'), before);
 });
-test('property-based task identity and custom fields are migrated without needing TaskNotes at runtime', async () => {
-  const settings = migrateSettings({
+test('explicit property-based identity and custom fields work independently', async () => {
+  const settings = settingsFrom({
     tasksFolder: 'Inbox',
     taskIdentificationMethod: 'property',
     taskPropertyName: 'kind',
     taskPropertyValue: 'action',
     fieldMapping: { title: 'name', status: 'state', archiveTag: 'archive' },
-    customStatuses: [
-      { value: 'finished', isCompleted: true, autoArchive: true, autoArchiveDelay: 10080 },
-    ],
-    privateToken: 'never copied',
+    completedStatuses: ['finished'],
   });
-  assert.equal(settings.privateToken, undefined);
   assert.equal(settings.archiveDays, 7);
   const f = fixture({ settings });
   f.add('Legacy.md', { kind: 'action', name: 'Legacy', state: 'finished', tags: ['archive'] });

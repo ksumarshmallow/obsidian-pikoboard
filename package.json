@@ -1,13 +1,15 @@
 {
   "name": "obsidian-pikoboard",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "private": true,
   "scripts": {
     "test": "npm run build && node --test",
     "check": "node scripts/check.js",
-    "build": "node scripts/build.js"
+    "build": "node scripts/build.js",
+    "release:check": "node scripts/release.js check",
+    "release:pack": "node scripts/release.js pack"
   },
-  "description": "Минималистичная самостоятельная доска для Obsidian",
+  "description": "Plan tasks on customizable boards with projects, due dates, checklists and a journal in each task note.",
   "license": "MIT",
   "repository": {
     "type": "git",
