@@ -103,7 +103,7 @@ test('the committed bundle fully starts with only the Obsidian API', async () =>
   );
   assert.equal(overview.getViewType(), 'pikoboard-view');
   assert.equal(namedBoard.getViewType(), 'pikoboard-file-view');
-  assert.equal(overview.getDisplayText(), 'Все задачи');
+  assert.equal(overview.getDisplayText(), 'All tasks');
   namedBoard.file = { path: 'Work/Plan.pikoboard', basename: 'Plan' };
   assert.equal(namedBoard.getDisplayText(), 'Plan');
   const overviewLeaf = { view: overview },
@@ -204,7 +204,7 @@ test('first launch is self-contained and preserves drafts and order', async () =
     order: ['Example.md'],
   });
   await plugin.initializeStorage();
-  assert.equal(plugin.settings.tasksFolder, 'Задачи');
+  assert.equal(plugin.settings.tasksFolder, 'Tasks');
   assert.equal(plugin.settings.appearance, 'obsidian');
   assert.equal(plugin.settings.autoArchive, true);
   assert.equal(plugin.settings.archiveDays, 7);

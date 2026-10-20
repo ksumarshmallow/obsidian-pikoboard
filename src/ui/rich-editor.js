@@ -35,7 +35,7 @@ function richEditor(app, container, value, onChange) {
     buildLocalExtensions() {
       const extensions = super.buildLocalExtensions();
       const { placeholder } = require('@codemirror/view');
-      extensions.push(placeholder('Описание'));
+      extensions.push(placeholder('Description'));
       return extensions;
     }
   }
@@ -67,7 +67,7 @@ function richEditor(app, container, value, onChange) {
     owner.editor = instance.editor;
     instance.set(value);
     content = instance.editor.cm.contentDOM;
-    content.setAttribute('aria-label', 'Описание');
+    content.setAttribute('aria-label', 'Description');
     content.addEventListener('focusin', focus);
     content.addEventListener('blur', restore);
     instance.changed = onChange;

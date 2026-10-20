@@ -208,7 +208,7 @@ test('copied duplicate board identities cannot silently join task populations or
   await assert.rejects(f.boards.load(record.file), /ID/);
   await assert.rejects(
     f.tasks.create({ title: 'Unsafe', board: 'board', status: 'review' }),
-    /Доска не найдена/,
+    /Board not found/,
   );
   assert.equal((await f.tasks.list()).length, 1, 'existing tasks remain accessible for recovery');
   assert.equal(f.disk.get(task.path), before);

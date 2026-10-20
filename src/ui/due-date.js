@@ -5,11 +5,11 @@ const { dateText } = require('./format.js');
 function duePresentation(task, now = new Date()) {
   const state = dueState(task, now);
   const date = dateText(task.due, now);
-  const context = { overdue: 'Просрочено', today: 'Сегодня', soon: 'Скоро' }[state] || 'Срок';
+  const context = { overdue: 'Overdue', today: 'Today', soon: 'Due soon' }[state] || 'Due date';
   return {
     state,
-    text: state === 'today' ? 'Сегодня' : date,
-    label: task.due ? `${context} · ${date}` : 'Срок',
+    text: state === 'today' ? 'Today' : date,
+    label: task.due ? `${context} · ${date}` : 'Due date',
   };
 }
 

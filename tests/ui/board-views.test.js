@@ -275,12 +275,12 @@ test('search keeps its input stable, intersects filters, preserves columns and c
   assert.equal(document.activeElement, input);
   assert.equal(input.value, 'Преподавателя');
   assert.deepEqual([...view.columns.keys()], ['open']);
-  assert.equal(view.filterBar.result.textContent, '1 из 2');
+  assert.equal(view.filterBar.result.textContent, '1 of 2');
   view.filters.query = 'no-match';
   await view.refresh();
   assert.equal(view.cards.size, 0);
-  assert.equal(view.filterBar.result.textContent, 'Ничего не найдено');
-  assert.equal(view.filterBar.controls.querySelectorAll('.pb-icon').some((e) => e.attributes['aria-label'] === 'Сбросить все фильтры'), true);
+  assert.equal(view.filterBar.result.textContent, 'No matching tasks');
+  assert.equal(view.filterBar.controls.querySelectorAll('.pb-icon').some((e) => e.attributes['aria-label'] === 'Clear filters'), true);
   view.filters = { project: '', tags: [], query: '', statuses: [] };
   await view.refresh();
   assert.deepEqual([...view.cards.keys()], ['A', 'B']);
@@ -307,7 +307,7 @@ test('a slow old search cannot overwrite newer results or the search field', asy
   await oldSearch;
   assert.equal(view.cards.size, 0);
   assert.equal(view.filterBar.input.value, 'missing');
-  assert.equal(view.filterBar.result.textContent, 'Ничего не найдено');
+  assert.equal(view.filterBar.result.textContent, 'No matching tasks');
 });
 
 test('applying a saved combination copies values and restores its archive scope', async () => {
@@ -333,7 +333,7 @@ test('filter controls retain keyboard focus after changing a selection', async (
   tags.focus();
   view.filters.tags = ['research'];
   await view.refresh();
-  assert.equal(document.activeElement.getAttribute('aria-label'), 'Фильтр по тегам');
+  assert.equal(document.activeElement.getAttribute('aria-label'), 'Filter by tags');
   assert.notEqual(document.activeElement, tags, 'focus follows the replacement control');
   view.filterBar.input.focus();
   view.filters.query = 'new search';
@@ -455,9 +455,9 @@ test('focus includes every active in-progress task despite saved domain/tag filt
   assert.equal(view.columns.get('done').count.textContent, '0');
   assert.equal(view.columns.get('in-progress').count.textContent, '3');
   assert.equal(view.domains.hidden, true);
-  assert.equal(view.toolbar.textContent.includes('В работе · 3'), true);
+  assert.equal(view.toolbar.querySelector('.pb-nav-count').textContent, '3');
   for (const card of view.cards.values())
-    assert.equal(card.meta.textContent.includes('Вне фильтра'), false);
+    assert.equal(card.meta.textContent.includes('Outside current filters'), false);
   assert.deepEqual(
     view.filters,
     { project: 'Projects/A', tags: ['work'] },
@@ -785,7 +785,7 @@ test('date badges refresh at midnight and when completing, reopening, or archivi
   const before = new Date(2026, 9, 20, 23, 59);
   view.updateCard(card, before);
   const today = card.meta.querySelectorAll('.pb-due')[0];
-  assert.equal(today.textContent, 'Сегодня');
+  assert.equal(today.textContent, 'Today');
   assert.equal(today.classList.contains('pb-due-today'), true);
   view.updateCard(card, before);
   assert.equal(card.meta.querySelectorAll('.pb-due')[0], today, 'unchanged dates do not rebuild metadata');
@@ -794,7 +794,7 @@ test('date badges refresh at midnight and when completing, reopening, or archivi
   view.updateCard(card, after);
   let badge = card.meta.querySelectorAll('.pb-due')[0];
   assert.equal(badge.classList.contains('pb-due-overdue'), true);
-  assert.match(badge.attributes['aria-label'], /^Просрочено/);
+  assert.match(badge.attributes['aria-label'], /^Overdue/);
   card.task = { ...card.task, status: 'custom-finished', isCompleted: true };
   view.updateCard(card, after);
   assert.equal(card.meta.querySelectorAll('.pb-due')[0].classList.contains('pb-due-overdue'), false);
@@ -997,9 +997,9 @@ test('quick creation keeps focus and selected template for consecutive tasks, wi
     assert.equal(f.row.hidden, false);
   }
   assert.deepEqual(f.submissions.map((x) => [x[0], x[1], x[3]]), [['First', 'open', f.template], ['Second', 'open', f.template]]);
-  f.row.querySelectorAll('button').find((b) => b.getAttribute('aria-label') === 'Убрать шаблон').onclick();
+  f.row.querySelectorAll('button').find((b) => b.getAttribute('aria-label') === 'Remove template').onclick();
   assert.equal(f.row._template, null);
-  assert.equal(choice.textContent, 'Шаблон');
+  assert.equal(choice.textContent, 'Template');
 });
 
 test('Escape, empty titles, IME and Shift+Enter do not create tasks; cancelling picker preserves input', async () => {
@@ -1105,5 +1105,30 @@ test('a task stays successfully created if layout persistence fails, without enc
   });
   assert.equal(await plugin.submitTask('Created', 'open'), file);
   assert.equal(creates, 1);
-  assert.match(f.notices[0], /Задача создана/);
+  assert.match(f.notices[0], /Task created/);
+});
+
+
+test('toolbar exposes English views, a separate active count and clearly named filters', async () => {
+  const { view } = boardFixture([
+    { path: 'A', status: 'open', projects: [], visibleTags: ['one', 'two'] },
+    { path: 'B', status: 'in-progress', projects: [], visibleTags: [] },
+  ]);
+  await view.refresh();
+  const tabs = view.toolbar.querySelector('.pb-nav');
+  assert.equal(tabs.getAttribute('aria-label'), 'Task views');
+  assert.equal(tabs.children[0].textContent, 'All tasks');
+  assert.equal(tabs.children[1].getAttribute('aria-label'), 'In progress, 1 task');
+  assert.equal(tabs.children[1].querySelector('.pb-nav-count').textContent, '1');
+  assert.equal(tabs.children[2].textContent, 'Archive');
+  assert.equal(view.filterBar.tagsButton.querySelector('.pb-picker-label').textContent, 'Tags');
+  assert.equal(view.filterBar.columnButton.querySelector('.pb-picker-label').textContent, 'Status');
+  assert.ok(view.filterBar.tagsButton.querySelector('.pb-filter-icon'));
+  assert.ok(view.filterBar.columnButton.querySelector('.pb-filter-icon'));
+  assert.equal(view.filterBar.controls.querySelector('.pb-saved-filter').textContent, 'Saved filters');
+  view.filters.tags = ['one', 'two'];
+  view.filters.statuses = ['open'];
+  await view.refresh();
+  assert.equal(view.filterBar.tagsButton.querySelector('.pb-picker-label').textContent, 'Tags (2)');
+  assert.equal(view.filterBar.columnButton.querySelector('.pb-picker-label').textContent, 'Status (1)');
 });

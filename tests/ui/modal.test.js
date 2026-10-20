@@ -107,7 +107,7 @@ test('date urgency updates while typing without rebuilding properties or touchin
   m.dateLabel = { textContent: '' };
   m.task.due = '2026-10-20';
   m.updateDue(new Date(2026, 9, 20, 23, 59));
-  assert.equal(m.dateLabel.textContent, 'Сегодня');
+  assert.equal(m.dateLabel.textContent, 'Today');
   m.updateDue(new Date(2026, 9, 21));
   assert.equal(classes.has('pb-due-today'), false);
   assert.equal(classes.has('pb-due-overdue'), true);
@@ -116,7 +116,7 @@ test('date urgency updates while typing without rebuilding properties or touchin
   m.task.due = '2000-01-01';
   m.renderProps = () => { throw new Error('Must not rebuild active controls'); };
   await m.syncExternal();
-  assert.match(attrs['aria-label'], /^Просрочено/);
+  assert.match(attrs['aria-label'], /^Overdue/);
   assert.equal(m.session.value, 'Keep my draft');
   assert.equal(doc.activeElement, m.editor);
   m.task.archived = true;

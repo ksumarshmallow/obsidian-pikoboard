@@ -107,7 +107,7 @@ test('external field conflict is detected atomically and rolls back the order re
   await f.actions.move(a, 'done', b.path, true);
   const record = f.actions.last;
   f.vault.beforeProcess = () => f.edit(a, { status: 'in-progress' });
-  await assert.rejects(f.actions.undo(), /изменил/);
+  await assert.rejects(f.actions.undo(), /changed/);
   assert.equal(f.data(a).status, 'in-progress');
   assert.deepEqual(f.saved(), [b.path, a.path]);
   assert.equal(f.actions.last, record);
@@ -156,7 +156,7 @@ test('a failed rollback retains only the remaining field undo and can be retried
   const f = fixture(), a = f.add('A'), b = f.add('B');
   await f.actions.move(a, 'done', b.path, true);
   f.vault.beforeProcess = () => { f.vault.fail = true; f.plugin.failSave = true; };
-  await assert.rejects(f.actions.undo(), /Позиция возвращена/);
+  await assert.rejects(f.actions.undo(), /Position restored/);
   assert.deepEqual(f.saved(), [a.path, b.path]);
   assert.equal(f.data(a).status, 'done');
   assert.equal(f.actions.last.order, undefined);
@@ -175,25 +175,25 @@ test('undo refuses deleted files, replaced files, changed mappings and removed d
   const f = fixture(), file = f.add('Task');
   await f.actions.patch(file, { due: '2026-10-22' });
   f.files.delete(file.path);
-  await assert.rejects(f.actions.undo(), /удалена/);
+  await assert.rejects(f.actions.undo(), /deleted/);
   f.files.set(file.path, { ...file });
-  await assert.rejects(f.actions.undo(), /заменена/);
+  await assert.rejects(f.actions.undo(), /replaced/);
   f.files.set(file.path, file);
   f.settings.fieldMapping = { ...f.settings.fieldMapping, due: 'deadline' };
-  await assert.rejects(f.actions.undo(), /Настройки/);
+  await assert.rejects(f.actions.undo(), /Property settings/);
   f.settings.fieldMapping.due = 'due';
   const board = { id: 'test', columns: [{ value: 'later', kind: 'todo' }, { value: 'done', kind: 'done' }] };
   f.boards.set(board.id, board);
   f.edit(file, { board: board.id, status: 'later' });
   await f.actions.patch(file, { status: 'done' });
   board.columns.shift();
-  await assert.rejects(f.actions.undo(), /Неизвестный статус/);
+  await assert.rejects(f.actions.undo(), /Unknown status/);
   assert.equal(f.data(file).status, 'done');
 });
 test('external reorder conflict does not overwrite current card ordering', async () => {
   const f = fixture(), a = f.add('A'), b = f.add('B'), c = f.add('C');
   await f.actions.move(a, 'open', c.path, true);
   f.plugin.data.order = [c.path, b.path, a.path];
-  await assert.rejects(f.actions.undo(), /Порядок/);
+  await assert.rejects(f.actions.undo(), /Card order/);
   assert.deepEqual(f.plugin.data.order, [c.path, b.path, a.path]);
 });

@@ -117,7 +117,7 @@ test('invalid input and IME Enter retain the draft without adding a chip', async
   f.type('#bad!');
   f.editor.input.onkeydown(event('Enter', true));
   assert.equal(f.saves, 0);
-  await assert.rejects(f.editor.flush(), /Некорректный тег/);
+  await assert.rejects(f.editor.flush(), /Invalid tag/);
   assert.equal(f.editor.input.value, '#bad!');
   assert.equal(f.draft.tagInput, '#bad!');
   assert.deepEqual(f.labels(), []);

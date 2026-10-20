@@ -11,7 +11,7 @@ function changes(before, after, ignored) {
 function restoreFields(data, fields) {
   for (const field of fields)
     if (!equal(data[field.key], field.after))
-      throw new Error('Эти поля уже изменились. Отмена не затронула задачу.');
+      throw new Error('These properties changed. Undo left the task untouched.');
   const restored = { ...data };
   for (const field of fields) {
     if (field.before === undefined) delete restored[field.key];

@@ -5,7 +5,7 @@ class TemplatePicker extends FuzzySuggestModal {
   constructor(app, items, resolve) {
     super(app);
     Object.assign(this, { items, resolve });
-    this.setPlaceholder('Выбрать шаблон');
+    this.setPlaceholder('Choose template');
   }
   getItems() { return this.items; }
   getItemText(item) { return item.label; }
@@ -18,7 +18,7 @@ class TemplatePicker extends FuzzySuggestModal {
 }
 async function pickTemplate(plugin) {
   const items = await plugin.templates.list();
-  items.push({ label: '+ Новый шаблон', create: true });
+  items.push({ label: '+ New template', create: true });
   return new Promise((resolve) => new TemplatePicker(plugin.app, items, resolve).open());
 }
 module.exports = { TemplatePicker, pickTemplate };

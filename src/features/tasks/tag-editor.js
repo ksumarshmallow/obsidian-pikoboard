@@ -2,7 +2,7 @@
 const C = require('../../domain/tasks.js');
 const { el, icon } = require('../../ui/elements.js');
 
-const key = (value) => value.normalize('NFC').toLocaleLowerCase('ru-RU');
+const key = (value) => value.normalize('NFC').toLocaleLowerCase('en-GB');
 function applyTagEdit(tags, edit, system) {
   const next = edit.remove
     ? C.tagList(tags).filter((tag) => key(tag) !== key(edit.remove))
@@ -16,12 +16,12 @@ class TagEditor {
     this.operations = (options.draft?.tagOperations || []).map((edit) => ({ ...edit }));
     this.node = el(parent, 'div', 'pb-tag-editor');
     this.node.setAttribute('role', 'group');
-    this.node.setAttribute('aria-label', 'Теги');
+    this.node.setAttribute('aria-label', 'Tags');
     this.chips = el(this.node, 'div', 'pb-tag-chips');
     this.input = el(this.node, 'input', 'pb-tags-input');
     this.input.type = 'text';
-    this.input.placeholder = '#тег';
-    this.input.setAttribute('aria-label', 'Новый тег');
+    this.input.placeholder = '#tag';
+    this.input.setAttribute('aria-label', 'New tag');
     this.input.autocomplete = 'off';
     this.input.spellcheck = false;
     this.input.value = options.draft?.tagInput || '';
@@ -70,7 +70,7 @@ class TagEditor {
     for (const tag of visible) {
       const chip = el(this.chips, 'span', 'pb-tag-chip');
       el(chip, 'span', 'pb-tag-label', '#' + tag);
-      const remove = icon(chip, 'x', 'Убрать тег #' + tag, () => {
+      const remove = icon(chip, 'x', 'Remove tag #' + tag, () => {
         this.operations.push({ remove: tag });
         this.render();
         this.drain().catch(this.options.fail);

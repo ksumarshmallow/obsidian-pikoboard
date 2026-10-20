@@ -6,11 +6,11 @@ const { el, icon } = require('../../ui/elements.js');
 function nextStep(parent, plugin, file, edit) {
   const wrap = el(parent, 'div', 'pb-next-step');
   wrap.hidden = true;
-  el(wrap, 'span', 'pb-next-label', 'Следующий шаг');
+  el(wrap, 'span', 'pb-next-label', 'Next step');
   const content = el(wrap, 'div', 'pb-next-text markdown-rendered');
-  const change = icon(wrap, 'pencil', 'Изменить следующий шаг', edit);
+  const change = icon(wrap, 'pencil', 'Edit next step', edit);
   change.classList.add('pb-next-edit');
-  const done = icon(wrap, 'x', 'Убрать следующий шаг', () => model.clearNext());
+  const done = icon(wrap, 'x', 'Clear next step', () => model.clearNext());
   done.classList.add('pb-next-remove');
   const model = plugin.journal(file);
   let signature = null,
@@ -60,7 +60,7 @@ function nextStep(parent, plugin, file, edit) {
             box.dataset.pbCheck = 'true';
             box.disabled = !!model.busy;
             box.checked = item.checked;
-            box.setAttribute('aria-label', item.text || 'Пункт чеклиста');
+            box.setAttribute('aria-label', item.text || 'Checklist item');
             box.onclick = (e) => e.stopPropagation();
             box.onchange = async () => {
               const checked = box.checked;

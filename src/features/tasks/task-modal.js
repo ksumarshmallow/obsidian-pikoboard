@@ -27,7 +27,7 @@ class TaskModal extends Modal {
     this.contentEl.addClass('pikoboard');
     try {
       this.task = await this.plugin.api().tasks.get(this.file.path);
-      if (!this.task) throw new Error('Задача не найдена');
+      if (!this.task) throw new Error('Task not found');
       const note = await this.plugin.note(this.file);
       if (this.closed) return;
       let draft = this.plugin.draft(this.file.path);
@@ -54,7 +54,7 @@ class TaskModal extends Modal {
     this.titleInput = el(top, 'textarea', 'pb-title-input');
     this.titleInput.rows = 1;
     this.titleInput.value = this.task.title || this.file.basename;
-    this.titleInput.setAttribute('aria-label', 'Название задачи');
+    this.titleInput.setAttribute('aria-label', 'Task title');
     this.titleInput.oninput = () => grow(this.titleInput, 32, 130);
     this.titleInput.onchange = () => this.commitTitle();
     this.titleInput.onkeydown = (e) => {
@@ -64,33 +64,33 @@ class TaskModal extends Modal {
       }
     };
     const actions = el(top, 'div', 'pb-actions');
-    icon(actions, 'trash-2', 'Удалить задачу', () =>
+    icon(actions, 'trash-2', 'Delete task', () =>
       this.plugin.requestTrash(this.file).catch((e) => this.fail(e)),
     ).classList.add('pb-trash');
-    icon(actions, 'ellipsis', 'Действия', (e) => {
+    icon(actions, 'ellipsis', 'Actions', (e) => {
       const menu = new Menu();
       menu.addItem((i) =>
         i
-          .setTitle('Перенести на доску')
+          .setTitle('Move to board')
           .setIcon('columns-3')
           .onClick(async () => {
             if (await this.flushSafe()) this.plugin.chooseTaskBoard(this.file);
           }),
       );
       menu.addItem((i) =>
-        i.setTitle('Сохранить как шаблон').setIcon('copy-plus').onClick(async () => {
+        i.setTitle('Save as template').setIcon('copy-plus').onClick(async () => {
           try {
             if (await this.close()) this.plugin.newTemplate(this.file);
           } catch (error) { this.fail(error); }
         }),
       );
       menu.addItem((i) =>
-        i.setTitle('Открыть файл').onClick(async () => {
+        i.setTitle('Open file').onClick(async () => {
           if (await this.close()) this.plugin.openFile(this.file);
         }),
       );
       menu.addItem((i) =>
-        i.setTitle(this.task.archived ? 'Вернуть' : 'В архив').onClick(async () => {
+        i.setTitle(this.task.archived ? 'Restore' : 'Archive').onClick(async () => {
           if (!(await this.flushSafe())) return;
           try {
             await this.plugin.patch(this.file, { archived: !this.task.archived });
@@ -111,8 +111,8 @@ class TaskModal extends Modal {
     this.editor.hidden = false;
     this.editor.value = this.session.value.trim() ? this.session.value : '';
     this.previewEl.hidden = true;
-    this.editor.placeholder = 'Описание';
-    this.editor.setAttribute('aria-label', 'Описание');
+    this.editor.placeholder = 'Description';
+    this.editor.setAttribute('aria-label', 'Description');
     this.editor.oninput = () => this.inputBody();
     this.editor.onblur = () => this.finishEdit();
     this.editor.onkeydown = (e) => {
@@ -126,7 +126,7 @@ class TaskModal extends Modal {
     this.bodyTools = tools;
     const checklist = button(tools, '', () => this.addChecklist(), 'pb-tool');
     setIcon(el(checklist, 'span'), 'list-todo');
-    el(checklist, 'span', '', 'Чеклист');
+    el(checklist, 'span', '', 'Checklist');
     const materials = button(
       tools,
       '',
@@ -134,26 +134,26 @@ class TaskModal extends Modal {
         const menu = new Menu();
         menu.addItem((i) =>
           i
-            .setTitle('Заметка')
+            .setTitle('Note')
             .onClick(() => this.plugin.chooseNote(this.file, (target) => this.attachNote(target))),
         );
-        menu.addItem((i) => i.setTitle('Файл').onClick(() => this.upload()));
+        menu.addItem((i) => i.setTitle('File').onClick(() => this.upload()));
         menu.showAtMouseEvent(e);
       },
       'pb-tool',
     );
     setIcon(el(materials, 'span'), 'paperclip');
-    el(materials, 'span', '', 'Материалы');
+    el(materials, 'span', '', 'Materials');
     this.saveState = el(tools, 'span', 'pb-save-state');
     this.saveState.setAttribute('role', 'status');
     const journal = el(this.contentEl, 'section', 'pb-journal');
-    journal.setAttribute('aria-label', 'Обновления задачи');
+    journal.setAttribute('aria-label', 'Task journal');
     this.nextWrap = nextStep(journal, this.plugin, this.file, () =>
       this.journalComposer.setMode('next'),
     );
     this.feed = el(journal, 'div', 'pb-feed pb-modal-feed');
     this.feed.setAttribute('role', 'region');
-    this.feed.setAttribute('aria-label', 'История');
+    this.feed.setAttribute('aria-label', 'History');
     this.journalComposer = new JournalComposer(this.plugin, this.file, journal);
     this.updateInput = this.journalComposer.input;
     this.send = this.journalComposer.send;
@@ -201,7 +201,7 @@ class TaskModal extends Modal {
       this.editor = fallback;
       host.remove();
       console.error('Embedded editor unavailable', e);
-      new Notice('Редактор Obsidian не загрузился. Описание доступно в текстовом поле.');
+      new Notice('The Obsidian editor could not load. You can edit the description in the text field.');
     }
   }
   commitTitle() {
@@ -245,7 +245,7 @@ class TaskModal extends Modal {
     const statusButton = picker(
       propertyRow('Status'),
       columns.find((s) => s.value === this.task.status)?.label || this.task.status,
-      'Статус',
+      'Status',
       columns.map((s) => ({
         value: s.value,
         label: s.label,
@@ -271,9 +271,9 @@ class TaskModal extends Modal {
       () => this.plugin.chooseProject((link) => this.change({ projects: link ? [link] : [] })),
       'pb-chip pb-picker ' + (p ? 'pb-project pb-color-' + C.colorFor(key) : ''),
     );
-    el(b, 'span', 'pb-picker-label', p ? fileTitle(p) : 'Проект');
+    el(b, 'span', 'pb-picker-label', p ? fileTitle(p) : 'Project');
     setIcon(el(b, 'span', 'pb-chevron'), 'chevron-down');
-    b.setAttribute('aria-label', 'Проект');
+    b.setAttribute('aria-label', 'Project');
     const date = button(propertyRow('Due date'), '', () => this.showCalendar(), 'pb-chip pb-date-button pb-due');
     setIcon(el(date, 'span'), 'calendar-days');
     this.dateLabel = el(date, 'span');
@@ -309,23 +309,23 @@ class TaskModal extends Modal {
     const popup = floatingPopup(this.dateButton, 'pb-calendar');
     this.calendar = popup;
     popup.setAttribute('role', 'dialog');
-    popup.setAttribute('aria-label', 'Срок');
+    popup.setAttribute('aria-label', 'Due date');
     const current = this.task.due ? new Date(this.task.due.slice(0, 10) + 'T12:00:00') : new Date();
     let month = new Date(current.getFullYear(), current.getMonth(), 1);
     const render = () => {
       popup.replaceChildren();
       const header = el(popup, 'div', 'pb-calendar-header');
-      icon(header, 'chevron-left', 'Предыдущий месяц', () => {
+      icon(header, 'chevron-left', 'Previous month', () => {
         month.setMonth(month.getMonth() - 1);
         render();
       }).classList.add('pb-calendar-nav');
-      el(header, 'span', '', month.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' }));
-      icon(header, 'chevron-right', 'Следующий месяц', () => {
+      el(header, 'span', '', month.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }));
+      icon(header, 'chevron-right', 'Next month', () => {
         month.setMonth(month.getMonth() + 1);
         render();
       }).classList.add('pb-calendar-nav');
       const grid = el(popup, 'div', 'pb-calendar-grid');
-      ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].forEach((d) =>
+      ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].forEach((d) =>
         el(grid, 'span', 'pb-calendar-weekday', d),
       );
       const start = new Date(month);
@@ -349,14 +349,14 @@ class TaskModal extends Modal {
         );
         day.setAttribute(
           'aria-label',
-          date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }),
+          date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }),
         );
         if (date.getMonth() !== month.getMonth()) day.classList.add('is-outside');
         if (date.toDateString() === new Date().toDateString()) day.classList.add('is-today');
         if (value === this.task.due?.slice(0, 10)) day.classList.add('is-selected');
       }
       const footer = el(popup, 'div', 'pb-calendar-footer');
-      button(footer, 'Без срока', async () => {
+      button(footer, 'No due date', async () => {
         this.closeCalendar();
         try {
           this.task = await this.plugin.patch(this.file, { due: null });
@@ -428,7 +428,7 @@ class TaskModal extends Modal {
     this.saveState.classList.remove('is-error');
     this.saveState.textContent = '';
     setIcon(this.saveState, 'check');
-    this.saveState.setAttribute('aria-label', 'Сохранено');
+    this.saveState.setAttribute('aria-label', 'Saved');
     clearTimeout(this.savedTimer);
     this.savedTimer = setTimeout(() => {
       if (!this.closed) this.saveState.replaceChildren();
@@ -468,17 +468,17 @@ class TaskModal extends Modal {
     if (this.closed) return;
     if (this.saveState) {
       this.saveState.classList.add('is-error');
-      this.saveState.textContent = 'Не сохранено';
+      this.saveState.textContent = 'Not saved';
     }
     new Notice(errorMessage(e), 7000);
     if (e.message === 'BODY_CONFLICT' && !this.recoverButton)
       this.recoverButton = button(
         this.contentEl,
-        'Сохранить копию',
+        'Save a copy',
         async () => {
           const f = await this.plugin.uniqueNote(
             this.plugin.settings.materialsFolder,
-            this.file.basename + ' — моя версия',
+            this.file.basename + ' – my version',
             this.session.value,
           );
           const note = await this.plugin.note(this.file);
@@ -558,12 +558,12 @@ class TaskModal extends Modal {
       });
     };
     if (!checks.length) {
-      if (!body.trim()) button(this.previewEl, 'Описание', () => this.edit(), 'pb-placeholder');
+      if (!body.trim()) button(this.previewEl, 'Description', () => this.edit(), 'pb-placeholder');
       else await chunk(0, lines.length);
       return;
     }
     if (!lines.slice(0, checks[0].line).join('\n').trim())
-      button(this.previewEl, 'Описание', () => this.edit(0, checks[0].line), 'pb-placeholder');
+      button(this.previewEl, 'Description', () => this.edit(0, checks[0].line), 'pb-placeholder');
     for (const item of checks) {
       await chunk(previous, item.line);
       if (seq !== this.renderSeq) return;
@@ -572,11 +572,11 @@ class TaskModal extends Modal {
       const box = el(row, 'input');
       box.type = 'checkbox';
       box.checked = item.checked;
-      box.setAttribute('aria-label', item.text || 'Выполнено');
+      box.setAttribute('aria-label', item.text || 'Completed');
       const text = el(row, 'input', 'pb-check-text');
       text.value = item.text;
-      text.placeholder = 'Пункт';
-      text.setAttribute('aria-label', 'Пункт чеклиста');
+      text.placeholder = 'Item';
+      text.setAttribute('aria-label', 'Checklist item');
       row.classList.toggle('is-complete', box.checked);
       box.onchange = () => {
         try {

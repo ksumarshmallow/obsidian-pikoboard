@@ -57,7 +57,7 @@ function readNote(text) {
     nextSection = '';
   if (next && !next.invalid && !overlap) {
     const match = next.section.match(
-      /^<!-- pikoboard:next:start -->\r?\n## Следующий шаг\r?\n([\s\S]*?)\r?\n<!-- pikoboard:next:end -->$/,
+      /^<!-- pikoboard:next:start -->\r?\n## (?:Next step|Следующий шаг)\r?\n([\s\S]*?)\r?\n<!-- pikoboard:next:end -->$/,
     );
     if (match) {
       nextAction = match[1].trim();
@@ -79,8 +79,7 @@ function validNote(text) {
     const starts = (history.section.match(/<!-- pb:entry\b/g) || []).length,
       ends = (history.section.match(/<!-- pb:end -->/g) || []).length;
     if (
-      !history.section.startsWith(START + '\n## Обновления\n') &&
-      !history.section.startsWith(START + '\r\n## Обновления\r\n')
+      !/^<!-- pikoboard:updates:start -->\r?\n## (?:History|Обновления)\r?\n/.test(history.section)
     )
       throw new Error('HISTORY_FORMAT');
     if (
@@ -124,7 +123,7 @@ function appendUpdate(text, update) {
   validUpdate(update);
   const content = validText(update.text, 'EMPTY_UPDATE');
   const { fm, history, note: n } = validNote(text);
-  const heading = new Date(update.at).toLocaleString('ru-RU', {
+  const heading = new Date(update.at).toLocaleString('en-GB', {
     dateStyle: 'long',
     timeStyle: 'short',
   });
@@ -134,11 +133,11 @@ function appendUpdate(text, update) {
     const i =
       fm.head.length +
       history.start +
-      history.section.indexOf('\n', history.section.indexOf('## Обновления')) +
+      history.section.indexOf('\n', history.section.indexOf('## ')) +
       1;
     return text.slice(0, i) + '\n' + entry + '\n' + text.slice(i);
   }
-  return text.replace(/\s*$/, '') + `\n\n${START}\n## Обновления\n\n${entry}\n${END}\n`;
+  return text.replace(/\s*$/, '') + `\n\n${START}\n## History\n\n${entry}\n${END}\n`;
 }
 function editUpdate(text, id, nextText) {
   return changeUpdate(text, id, validText(nextText, 'EMPTY_UPDATE'));
@@ -167,7 +166,7 @@ function setNextAction(text, expected, nextAction) {
     { fm, history, next, note } = validNote(text);
   if (note.nextAction === value) return text;
   if (note.nextAction !== expected) throw new Error('NEXT_CONFLICT');
-  const section = value ? `${NEXT_START}\n## Следующий шаг\n${value}\n${NEXT_END}` : '';
+  const section = value ? `${NEXT_START}\n## Next step\n${value}\n${NEXT_END}` : '';
   if (next)
     return (
       text.slice(0, fm.head.length + next.start) + section + text.slice(fm.head.length + next.end)
@@ -409,9 +408,9 @@ function taskTags(input, existing, system) {
     if (protectedTags.has(key(tag))) continue;
     if (!/^[\p{L}\p{M}\p{N}_-]+(?:\/[\p{L}\p{M}\p{N}_-]+)*$/u.test(tag) || /^\p{N}+$/u.test(tag)) {
       const error = new Error(
-        'Некорректный тег «' +
+        'Invalid tag “' +
           tag +
-          '». Используйте буквы, цифры, дефис, подчёркивание или / между частями; тег не может состоять только из цифр.',
+          '”. Use letters, numbers, hyphens, underscores or / between segments. A tag cannot contain only numbers.',
       );
       error.code = 'INVALID_TAG';
       throw error;
@@ -440,10 +439,10 @@ function dayLabel(date, now = new Date()) {
   const a = new Date(date),
     b = new Date(now);
   const day = (d) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-  if (day(a) === day(b)) return 'Сегодня';
+  if (day(a) === day(b)) return 'Today';
   b.setDate(b.getDate() - 1);
-  if (day(a) === day(b)) return 'Вчера';
-  return a.toLocaleDateString('ru-RU', {
+  if (day(a) === day(b)) return 'Yesterday';
+  return a.toLocaleDateString('en-GB', {
     day: 'numeric',
     month: 'long',
     ...(a.getFullYear() !== now.getFullYear() ? { year: 'numeric' } : {}),

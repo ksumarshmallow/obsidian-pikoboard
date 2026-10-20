@@ -150,8 +150,8 @@ class JournalModel {
       await this.save();
       this.plugin.refresh();
       const fragment = document.createDocumentFragment();
-      el(fragment, 'span', '', 'Следующий шаг убран. ');
-      const undo = el(fragment, 'button', 'pb-notice-undo', 'Вернуть');
+      el(fragment, 'span', '', 'Next step cleared. ');
+      const undo = el(fragment, 'button', 'pb-notice-undo', 'Restore');
       undo.onclick = async () => {
         undo.disabled = true;
         try {

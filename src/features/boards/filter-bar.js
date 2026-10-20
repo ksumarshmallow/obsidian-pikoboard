@@ -14,10 +14,10 @@ class FilterBar {
     setIcon(el(search, 'span', 'pb-search-icon'), 'search');
     this.input = el(search, 'input', 'pb-search-input');
     this.input.type = 'search';
-    this.input.placeholder = 'Поиск задач';
-    this.input.setAttribute('aria-label', 'Поиск задач');
+    this.input.placeholder = 'Search tasks';
+    this.input.setAttribute('aria-label', 'Search tasks');
     this.input.value = view.filters.query || '';
-    this.clear = icon(search, 'x', 'Очистить поиск', () => this.setQuery(''));
+    this.clear = icon(search, 'x', 'Clear search', () => this.setQuery(''));
     this.input.oninput = (e) => {
       // Keep the same input node and caret while results and counts change.
       view.filters.query = this.input.value;
@@ -68,7 +68,7 @@ class FilterBar {
   }
   save(preset, rename = false) {
     const scope = this.scope(), filters = F.normalizeFilters(this.view.filters), archive = this.view.archive;
-    new AskModal(this.view.app, rename ? 'Название подборки' : 'Сохранить подборку', 'Название подборки',
+    new AskModal(this.view.app, rename ? 'Filter name' : 'Save filters', 'Filter name',
       (name) => this.view.plugin.savedFilters.save(scope, name, filters, archive, rename ? preset.id : undefined),
       rename ? preset.name : '',
     ).open();
@@ -79,18 +79,18 @@ class FilterBar {
       label: p.name, icon: p.id === selected?.id ? 'check' : 'bookmark', action: () => this.apply(p),
     }));
     if (items.length) items.push({ separator: true });
-    items.push({ label: 'Сохранить подборку…', icon: 'bookmark-plus', action: () => this.save() });
+    items.push({ label: 'Save filters…', icon: 'bookmark-plus', action: () => this.save() });
     if (selected) items.push(
-      { label: 'Переименовать подборку', icon: 'pencil', action: () => this.save(selected, true) },
-      { label: 'Удалить подборку', icon: 'trash-2', danger: true, action: async () => {
+      { label: 'Rename saved filter', icon: 'pencil', action: () => this.save(selected, true) },
+      { label: 'Delete saved filter', icon: 'trash-2', danger: true, action: async () => {
         const scope = this.scope();
         const confirmed = await new Promise((resolve) => new ConfirmMessageModal(
-          this.view.app, 'Удалить подборку?', selected.name, 'Удалить', resolve, true,
+          this.view.app, 'Delete saved filter?', selected.name, 'Delete', resolve, true,
         ).open());
         if (confirmed) await this.view.plugin.savedFilters.remove(scope, selected.id);
       } },
     );
-    actionMenu(anchor, items, 'Подборки', this.view.app);
+    actionMenu(anchor, items, 'Saved filters', this.view.app);
   }
   update() {
     const v = this.view, f = F.normalizeFilters(v.filters);
@@ -102,10 +102,9 @@ class FilterBar {
     const statuses = v.availableColumns();
     const columnLabel = () => {
       const shown = v.visibleColumns();
-      return shown.length === statuses.length ? 'Все столбцы' : `Столбцы · ${shown.length} из ${statuses.length}`;
+      return shown.length === statuses.length ? 'Status' : `Status (${shown.length})`;
     };
-    const tagLabel = () => v.filters.tags.length
-      ? v.filters.tags.map((t) => t === '__none__' ? 'Без тегов' : '#' + t).join(', ') : 'Все теги';
+    const tagLabel = () => v.filters.tags.length ? `Tags (${v.filters.tags.length})` : 'Tags';
     if (this.tagsButton?._isOpen() && v.mode !== 'focus') {
       this.tagsButton._update(tagLabel());
       return;
@@ -124,20 +123,20 @@ class FilterBar {
     this.controls.querySelectorAll('.pb-picker-wrap').forEach((w) => w._dispose?.());
     this.controls.replaceChildren();
     const tagsButton = this.tagsButton = picker(this.controls, tagLabel(),
-      'Фильтр по тегам', () => [
-        { value: '', label: 'Все теги', selected: !v.filters.tags.length },
-        ...['__none__', ...tags].map((t) => ({ value: t, label: t === '__none__' ? 'Без тегов' : '#' + t, selected: v.filters.tags.includes(t) })),
+      'Filter by tags', () => [
+        { value: '', label: 'All tags', selected: !v.filters.tags.length },
+        ...['__none__', ...tags].map((t) => ({ value: t, label: t === '__none__' ? 'Untagged' : '#' + t, selected: v.filters.tags.includes(t) })),
       ], ({ value }) => {
         const current = v.filters.tags;
         v.filters.tags = !value ? [] : current.includes(value) ? current.filter((x) => x !== value)
           : value === '__none__' ? [value] : [...current.filter((x) => x !== '__none__'), value];
         v.changed();
-      }, 'pb-filter' + (f.tags.length ? ' is-active' : ''), { multiple: true, onClose: () => this.update() });
+      }, 'pb-filter' + (f.tags.length ? ' is-active' : ''), { icon: 'tags', multiple: true, onClose: () => this.update() });
     const columnButton = this.columnButton = v.archive ? null : picker(this.controls, columnLabel(),
-      'Видимые столбцы', () => {
+      'Filter by status', () => {
         const shown = v.visibleColumns().map((c) => c.value);
         return [
-          { value: '', label: 'Все столбцы', selected: shown.length === statuses.length },
+          { value: '', label: 'All statuses', selected: shown.length === statuses.length },
           ...statuses.map((s) => ({ ...s, selected: shown.includes(s.value), disabled: shown.length === 1 && shown[0] === s.value })),
         ];
       }, ({ value }) => {
@@ -145,21 +144,21 @@ class FilterBar {
         const next = !value ? [] : shown.includes(value) ? shown.filter((x) => x !== value) : [...shown, value];
         v.filters.statuses = next.length === statuses.length ? [] : next;
         v.changed();
-      }, 'pb-filter' + (f.statuses.length ? ' is-active' : ''), { multiple: true, onClose: () => this.update() });
+      }, 'pb-filter' + (f.statuses.length ? ' is-active' : ''), { icon: 'list-filter', multiple: true, onClose: () => this.update() });
     const saved = button(this.controls, '', () => this.menu(saved), 'pb-saved-filter' + (selected ? ' is-active' : ''));
     setIcon(el(saved, 'span'), 'bookmark');
-    el(saved, 'span', 'pb-picker-label', selected?.name || 'Подборки');
-    saved.setAttribute('aria-label', 'Подборки' + (selected ? ' · ' + selected.name : ''));
-    saved.setAttribute('title', selected?.name || 'Подборки');
+    el(saved, 'span', 'pb-picker-label', selected ? `Saved filters · ${selected.name}` : 'Saved filters');
+    saved.setAttribute('aria-label', 'Saved filters' + (selected ? ' · ' + selected.name : ''));
+    saved.setAttribute('title', 'Save and reuse the current filters');
     saved.setAttribute('aria-haspopup', 'menu');
-    if (F.hasFilters(f)) icon(this.controls, 'x', 'Сбросить все фильтры', () => this.reset());
+    if (F.hasFilters(f)) icon(this.controls, 'x', 'Clear filters', () => this.reset());
     if (focusedLabel) {
       const target = [tagsButton, columnButton, saved].find((b) => b?.getAttribute('aria-label') === focusedLabel);
       (target || this.input).focus();
     }
   }
   showResult(count, total, error = '') {
-    this.result.textContent = error || (F.hasFilters(this.view.filters) ? count ? `${count} из ${total}` : 'Ничего не найдено' : '');
+    this.result.textContent = error || (F.hasFilters(this.view.filters) ? count ? `${count} of ${total}` : 'No matching tasks' : '');
     this.result.classList.toggle('is-error', !!error);
   }
   dispose() {

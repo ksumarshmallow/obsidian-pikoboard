@@ -43,7 +43,7 @@ function floatingPopup(anchor, cls) {
   return popup;
 }
 let activeActionMenu = null;
-function actionMenu(anchor, items, label = 'Действия с записью', app) {
+function actionMenu(anchor, items, label = 'Entry actions', app) {
   const previous = activeActionMenu;
   if (previous) {
     previous.close();
@@ -147,6 +147,11 @@ function picker(parent, label, aria, items, onChange, cls = '', options = {}) {
   trigger.setAttribute('aria-label', aria);
   trigger.setAttribute('aria-haspopup', 'listbox');
   trigger.setAttribute('aria-expanded', 'false');
+  if (options.icon) {
+    const mark = el(trigger, 'span', 'pb-filter-icon');
+    mark.setAttribute('aria-hidden', 'true');
+    setIcon(mark, options.icon);
+  }
   const caption = el(trigger, 'span', 'pb-picker-label', label);
   setIcon(el(trigger, 'span', 'pb-chevron'), 'chevron-down');
   const choices = () => typeof items === 'function' ? items() : items;

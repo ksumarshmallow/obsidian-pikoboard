@@ -1,11 +1,9 @@
-PikoBoard brings customizable task boards, task notes, next-step checklists and a journal into Obsidian.
+PikoBoard 0.12.1 makes the interface consistently English and clarifies the board toolbar.
 
-This release prepares the project for Community directory review:
+- English buttons, commands, menus, dialogs, calendar labels and notifications.
+- Separate All tasks, In progress and Archive tabs, with an activity count badge.
+- Tags and Status filters with icons and selection counts. Multiselect menus stay open while selecting.
+- Saved filters replaces the ambiguous saved-view label.
+- New notes use English section headings and default folder names. Existing note content, folder settings and custom names remain intact.
 
-- English installation, usage and development documentation.
-- Reproducible release checks and a distribution package with license notices.
-- Task deletion follows the Obsidian deletion preference.
-- Improved cleanup and a plain-text fallback when the embedded description editor cannot load.
-- Self-contained first-run settings, without reading another plugin's configuration.
-
-Requires Obsidian 1.14.4 or newer. Existing PikoBoard settings and notes are retained. Most task controls remain in Russian; mobile behavior has not yet been verified.
+Requires Obsidian 1.14.4 or newer. Mobile behavior has not yet been verified.

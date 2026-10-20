@@ -30,14 +30,14 @@ test('rename, duplicate validation, removal and concurrent saves preserve other 
   const { store } = fixture();
   await Promise.all([store.save('a', 'Первый', {}, false), store.save('a', 'Второй', { query: 'q' }, true)]);
   const first = store.list('a')[0], second = store.list('a')[1];
-  await assert.rejects(store.save('a', 'ПЕРВЫЙ', {}, false), /уже есть/);
+  await assert.rejects(store.save('a', 'ПЕРВЫЙ', {}, false), /already exists/);
   await store.save('a', 'Новое название', first.filters, false, first.id);
   assert.equal(store.list('a')[0].id, first.id);
   await store.remove('wrong-board', first.id);
   assert.equal(store.list('a').length, 2);
   await store.remove('a', first.id);
   assert.equal(store.list('a')[0].id, second.id);
-  await assert.rejects(store.save('a', 'Возврат', {}, false, first.id), /удалена/);
+  await assert.rejects(store.save('a', 'Возврат', {}, false, first.id), /deleted/);
 });
 test('failed disk writes roll back state and the next save can recover', async () => {
   const { plugin, store } = fixture();

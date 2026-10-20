@@ -153,7 +153,7 @@ test('visible message menu offers copy, edit, delete and undo completion; copy i
       .filter((i) => !i.separator);
   assert.deepEqual(
     Array.from(items, (i) => i.label),
-    ['Копировать', 'Изменить', 'Вернуть в следующий шаг', 'Удалить запись'],
+    ['Copy', 'Edit', 'Restore as next step', 'Delete entry'],
   );
   assert.equal(items.at(-1).danger, true);
   await items[0].action();

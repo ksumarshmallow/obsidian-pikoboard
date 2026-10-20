@@ -94,13 +94,13 @@ class PikoBoard extends Plugin {
     this.registerView(TYPE, (leaf) => new BoardView(leaf, this));
     this.registerView(FILE_TYPE, (leaf) => new BoardFileView(leaf, this));
     this.registerExtensions(['pikoboard'], FILE_TYPE);
-    this.addCommand({ id: 'create-board', name: 'Создать доску', callback: () => this.newBoard() });
+    this.addCommand({ id: 'create-board', name: 'Create board', callback: () => this.newBoard() });
     this.registerEvent(
       this.app.workspace.on('file-menu', (menu, file) => {
         if (file && !file.extension && file.children)
           menu.addItem((item) =>
             item
-              .setTitle('Создать доску PikoBoard')
+              .setTitle('Create PikoBoard board')
               .setIcon('columns-3')
               .onClick(() => this.newBoard(file.path === '/' ? '' : file.path)),
           );
@@ -108,14 +108,14 @@ class PikoBoard extends Plugin {
     );
     this.addCommand({
       id: 'restore-message',
-      name: 'Восстановить удалённую запись',
+      name: 'Restore deleted entry',
       callback: () => this.chooseDeletedMessage(),
     });
-    this.addCommand({ id: 'open', name: 'Открыть доску', callback: () => this.chooseBoard() });
-    this.addCommand({ id: 'all-tasks', name: 'Все задачи', callback: () => this.openBoard() });
+    this.addCommand({ id: 'open', name: 'Open board', callback: () => this.chooseBoard() });
+    this.addCommand({ id: 'all-tasks', name: 'All tasks', callback: () => this.openBoard() });
     this.addCommand({
       id: 'undo-task-action',
-      name: 'Отменить действие с задачей',
+      name: 'Undo task action',
       checkCallback: (checking) => {
         if (!this.actions.last) return false;
         if (!checking) this.undoTaskAction();
@@ -124,7 +124,7 @@ class PikoBoard extends Plugin {
     });
     this.addCommand({
       id: 'create',
-      name: 'Создать задачу',
+      name: 'Create task',
       callback: () => this.createTask(),
     });
     this.addRibbonIcon('columns-3', 'PikoBoard', () => this.chooseBoard());
@@ -278,12 +278,12 @@ class PikoBoard extends Plugin {
     new PickModal(
       this.app,
       [
-        { label: 'Все задачи', all: true },
+        { label: 'All tasks', all: true },
         ...boards.map(({ file }) => ({ label: file.basename + ' · ' + file.parent.path, file })),
-        { label: '+ Создать доску', create: true },
+        { label: '+ Create board', create: true },
       ],
       (item) => (item.create ? this.newBoard() : this.openBoard(item.file)),
-      'Открыть доску',
+      'Open board',
     ).open();
   }
   columnsFor(task) {
@@ -295,9 +295,9 @@ class PikoBoard extends Plugin {
   }
   async moveToBoard(file, destination) {
     const task = await this.store.get(file.path);
-    if (!task) throw new Error('Задача не найдена');
+    if (!task) throw new Error('Task not found');
     const columns = destination ? this.boards.get(destination)?.board.columns : statuses;
-    if (!columns?.length) throw new Error('Доска не найдена');
+    if (!columns?.length) throw new Error('Board not found');
     const column =
       columns.find((c) => c.value === task.status) ||
       columns.find(
@@ -311,14 +311,14 @@ class PikoBoard extends Plugin {
     new PickModal(
       this.app,
       [
-        { label: 'Без доски', id: '' },
+        { label: 'No board', id: '' },
         ...boards.map(({ file, board }) => ({
           label: file.basename + ' · ' + file.parent.path,
           id: board.id,
         })),
       ],
       (item) => this.moveToBoard(file, item.id),
-      'Перенести на доску',
+      'Move to board',
     ).open();
   }
   async addExisting(view) {
@@ -328,7 +328,7 @@ class PikoBoard extends Plugin {
       tasks.map((t) => ({ label: t.title, path: t.path })),
       (item) =>
         this.moveToBoard(this.app.vault.getAbstractFileByPath(item.path), view.boardConfig.id),
-      'Добавить задачу без доски',
+      'Add unassigned task',
     ).open();
   }
   refresh() {
@@ -355,7 +355,7 @@ class PikoBoard extends Plugin {
     if (!action || this.disposed) return;
     const fragment = document.createDocumentFragment();
     el(fragment, 'span', '', action.label + ' · ' + action.title);
-    const undo = el(fragment, 'button', 'pb-notice-undo', 'Отменить');
+    const undo = el(fragment, 'button', 'pb-notice-undo', 'Undo');
     undo.onclick = async () => {
       undo.disabled = true;
       await this.undoTaskAction(action);
@@ -365,7 +365,7 @@ class PikoBoard extends Plugin {
   }
   async undoTaskAction(action = this.actions.last) {
     try {
-      if (await this.actions.undo(action)) new Notice('Действие отменено', 2500);
+      if (await this.actions.undo(action)) new Notice('Action undone', 2500);
     } catch (error) {
       new Notice(errorMessage(error));
     }
@@ -459,8 +459,8 @@ class PikoBoard extends Plugin {
       this.refresh();
     });
     const fragment = document.createDocumentFragment();
-    el(fragment, 'span', '', 'Запись удалена. ');
-    const undo = el(fragment, 'button', 'pb-notice-undo', 'Восстановить');
+    el(fragment, 'span', '', 'Entry deleted. ');
+    const undo = el(fragment, 'button', 'pb-notice-undo', 'Restore');
     undo.onclick = async () => {
       undo.disabled = true;
       try {
@@ -475,7 +475,7 @@ class PikoBoard extends Plugin {
   }
   async restoreDeletedMessage(record) {
     const file = this.app.vault.getAbstractFileByPath(record.path);
-    if (!(file instanceof TFile)) throw new Error('Сначала восстановите файл задачи из корзины.');
+    if (!(file instanceof TFile)) throw new Error('Restore the task file from trash first.');
     await this.queue(file, async () => {
       await this.app.vault.process(file, (source) => {
         if (C.readNote(source).updates.some((u) => u.id === record.update.id))
@@ -499,7 +499,7 @@ class PikoBoard extends Plugin {
       }))
       .reverse();
     if (!items.length) {
-      new Notice('Нет удалённых записей');
+      new Notice('No deleted entries');
       return;
     }
     new PickModal(
@@ -507,9 +507,9 @@ class PikoBoard extends Plugin {
       items,
       async (item) => {
         await this.restoreDeletedMessage(item.record);
-        new Notice('Запись восстановлена');
+        new Notice('Entry restored');
       },
-      'Восстановить запись',
+      'Restore entry',
     ).open();
   }
   async restoreStep(file, update) {
@@ -518,9 +518,9 @@ class PikoBoard extends Plugin {
       const yes = await new Promise((resolve) =>
         new ConfirmMessageModal(
           this.app,
-          'Заменить следующий шаг?',
+          'Replace next step?',
           expected + ' → ' + update.text,
-          'Заменить',
+          'Replace',
           resolve,
         ).open(),
       );
@@ -534,17 +534,17 @@ class PikoBoard extends Plugin {
   messageActions(file, update, rendered) {
     const items = [
       {
-        label: 'Копировать',
+        label: 'Copy',
         icon: 'copy',
         action: async () => {
           await navigator.clipboard.writeText(
             rendered.innerText || rendered.textContent || update.text,
           );
-          new Notice('Скопировано', 1500);
+          new Notice('Copied', 1500);
         },
       },
       {
-        label: 'Изменить',
+        label: 'Edit',
         icon: 'pencil',
         action: () =>
           new EditMessageModal(this.app, update, (text) =>
@@ -554,23 +554,23 @@ class PikoBoard extends Plugin {
     ];
     if (update.kind === 'done')
       items.push({
-        label: 'Вернуть в следующий шаг',
+        label: 'Restore as next step',
         icon: 'undo-2',
         action: () => this.restoreStep(file, update),
       });
     items.push(
       { separator: true },
       {
-        label: 'Удалить запись',
+        label: 'Delete entry',
         icon: 'trash-2',
         danger: true,
         action: async () => {
           const yes = await new Promise((resolve) =>
             new ConfirmMessageModal(
               this.app,
-              'Удалить запись?',
+              'Delete entry?',
               update.text,
-              'Удалить',
+              'Delete',
               resolve,
               true,
             ).open(),
@@ -587,7 +587,7 @@ class PikoBoard extends Plugin {
     return actionMenu(
       anchor,
       this.messageActions(file, update, rendered),
-      'Действия с записью',
+      'Entry actions',
       this.app,
     );
   }
@@ -642,7 +642,7 @@ class PikoBoard extends Plugin {
       .getMarkdownFiles()
       .filter((f) => this.app.metadataCache.getFileCache(f)?.frontmatter?.type === 'project')
       .map((f) => ({ label: f.basename, value: f.path.replace(/\.md$/, '') }))
-      .sort((a, b) => a.label.localeCompare(b.label, 'ru'));
+      .sort((a, b) => a.label.localeCompare(b.label, 'en'));
   }
   async ensureFolder(path) {
     let part = '';
@@ -657,7 +657,7 @@ class PikoBoard extends Plugin {
       .replace(/[\\/:*?"<>|\[\]#^]/g, ' ')
       .trim()
       .slice(0, 140);
-    if (!safe || /^\.+$/.test(safe)) safe = 'Заметка';
+    if (!safe || /^\.+$/.test(safe)) safe = 'Note';
     let path = normalizePath((folder ? folder + '/' : '') + safe + '.md'),
       n = 2;
     while (this.app.vault.getAbstractFileByPath(path))
@@ -699,14 +699,14 @@ class PikoBoard extends Plugin {
     await this.persist();
     this.noteCache.delete(file.path);
     this.refresh();
-    new Notice('Задача удалена');
+    new Notice('Task deleted');
     return true;
   }
   newTemplate(file) {
-    new AskModal(this.app, 'Название шаблона', 'Название шаблона', async (name) => {
+    new AskModal(this.app, 'Template name', 'Template name', async (name) => {
       const template = await this.templates.save(name, file);
       await this.openFile(template);
-      new Notice('Шаблон сохранён');
+      new Notice('Template saved');
     }, file?.basename || '').open();
   }
   async submitTask(title, status, view, templateFile) {
@@ -737,7 +737,7 @@ class PikoBoard extends Plugin {
         view.revealNew(task.path);
       }
     } catch (error) {
-      new Notice('Задача создана. Не удалось обновить доску – открой её заново.');
+      new Notice('Task created. Reopen the board to refresh it.');
       console.error(error);
     }
     this.refresh();
@@ -747,15 +747,15 @@ class PikoBoard extends Plugin {
     new PickModal(
       this.app,
       [
-        { label: 'Без проекта', value: '' },
+        { label: 'No project', value: '' },
         ...this.projects(),
-        { label: '+ Новый проект', create: true },
+        { label: '+ New project', create: true },
       ],
       async (i) => {
         if (i.create)
-          new AskModal(this.app, 'Проект', 'Название проекта', async (title) => {
+          new AskModal(this.app, 'Project', 'Project name', async (title) => {
             const safe = title.replace(/[\\/:*?"<>|\[\]#^]/g, ' ').trim();
-            if (!safe || /^\.+$/.test(safe)) throw new Error('Введите название проекта');
+            if (!safe || /^\.+$/.test(safe)) throw new Error('Enter a project name');
             const f = await this.uniqueNote(
               [this.settings.projectsFolder, safe].filter(Boolean).join('/'),
               safe,
@@ -765,7 +765,7 @@ class PikoBoard extends Plugin {
           }).open();
         else await callback(i.value ? '[[' + i.value + ']]' : '');
       },
-      'Проект',
+      'Project',
     ).open();
   }
   chooseNote(source, callback) {
@@ -773,18 +773,18 @@ class PikoBoard extends Plugin {
       .getFiles()
       .filter((f) => f.path !== source.path)
       .map((f) => ({ label: f.basename + ' · ' + (f.parent?.path || ''), file: f }));
-    items.unshift({ label: '+ Новое исследование', create: true });
+    items.unshift({ label: '+ New research note', create: true });
     new PickModal(
       this.app,
       items,
       async (i) => {
         if (i.create)
-          new AskModal(this.app, 'Исследование', 'Название', async (title) =>
+          new AskModal(this.app, 'Research note', 'Name', async (title) =>
             callback(await this.uniqueNote(this.settings.materialsFolder, title, '')),
           ).open();
         else await callback(i.file);
       },
-      'Материалы',
+      'Materials',
     ).open();
   }
   openFile(file) {
@@ -823,7 +823,7 @@ class PikoBoard extends Plugin {
           previous = group;
         }
         const message = el(stage, 'div', 'pb-message');
-        if (u.kind === 'done') el(message, 'span', 'pb-message-kind', 'Сделано');
+        if (u.kind === 'done') el(message, 'span', 'pb-message-kind', 'Done');
         const text = el(message, 'div', 'pb-message-text markdown-rendered');
         await MarkdownRenderer.render(this.app, u.text, text, file.path, component);
         if (seq !== container._seq) return;
@@ -847,11 +847,11 @@ class PikoBoard extends Plugin {
           footer,
           'time',
           '',
-          date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+          date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
         );
         time.dateTime = u.at;
-        time.setAttribute('aria-label', date.toLocaleString('ru-RU'));
-        const menuButton = icon(footer, 'ellipsis', 'Действия с записью', (e) =>
+        time.setAttribute('aria-label', date.toLocaleString('en-GB'));
+        const menuButton = icon(footer, 'ellipsis', 'Entry actions', (e) =>
           this.messageMenu(e, file, u, text, menuButton),
         );
         menuButton.classList.add('pb-message-menu');
@@ -938,7 +938,7 @@ function readNote(text) {
     nextSection = '';
   if (next && !next.invalid && !overlap) {
     const match = next.section.match(
-      /^<!-- pikoboard:next:start -->\r?\n## Следующий шаг\r?\n([\s\S]*?)\r?\n<!-- pikoboard:next:end -->$/,
+      /^<!-- pikoboard:next:start -->\r?\n## (?:Next step|Следующий шаг)\r?\n([\s\S]*?)\r?\n<!-- pikoboard:next:end -->$/,
     );
     if (match) {
       nextAction = match[1].trim();
@@ -960,8 +960,7 @@ function validNote(text) {
     const starts = (history.section.match(/<!-- pb:entry\b/g) || []).length,
       ends = (history.section.match(/<!-- pb:end -->/g) || []).length;
     if (
-      !history.section.startsWith(START + '\n## Обновления\n') &&
-      !history.section.startsWith(START + '\r\n## Обновления\r\n')
+      !/^<!-- pikoboard:updates:start -->\r?\n## (?:History|Обновления)\r?\n/.test(history.section)
     )
       throw new Error('HISTORY_FORMAT');
     if (
@@ -1005,7 +1004,7 @@ function appendUpdate(text, update) {
   validUpdate(update);
   const content = validText(update.text, 'EMPTY_UPDATE');
   const { fm, history, note: n } = validNote(text);
-  const heading = new Date(update.at).toLocaleString('ru-RU', {
+  const heading = new Date(update.at).toLocaleString('en-GB', {
     dateStyle: 'long',
     timeStyle: 'short',
   });
@@ -1015,11 +1014,11 @@ function appendUpdate(text, update) {
     const i =
       fm.head.length +
       history.start +
-      history.section.indexOf('\n', history.section.indexOf('## Обновления')) +
+      history.section.indexOf('\n', history.section.indexOf('## ')) +
       1;
     return text.slice(0, i) + '\n' + entry + '\n' + text.slice(i);
   }
-  return text.replace(/\s*$/, '') + `\n\n${START}\n## Обновления\n\n${entry}\n${END}\n`;
+  return text.replace(/\s*$/, '') + `\n\n${START}\n## History\n\n${entry}\n${END}\n`;
 }
 function editUpdate(text, id, nextText) {
   return changeUpdate(text, id, validText(nextText, 'EMPTY_UPDATE'));
@@ -1048,7 +1047,7 @@ function setNextAction(text, expected, nextAction) {
     { fm, history, next, note } = validNote(text);
   if (note.nextAction === value) return text;
   if (note.nextAction !== expected) throw new Error('NEXT_CONFLICT');
-  const section = value ? `${NEXT_START}\n## Следующий шаг\n${value}\n${NEXT_END}` : '';
+  const section = value ? `${NEXT_START}\n## Next step\n${value}\n${NEXT_END}` : '';
   if (next)
     return (
       text.slice(0, fm.head.length + next.start) + section + text.slice(fm.head.length + next.end)
@@ -1290,9 +1289,9 @@ function taskTags(input, existing, system) {
     if (protectedTags.has(key(tag))) continue;
     if (!/^[\p{L}\p{M}\p{N}_-]+(?:\/[\p{L}\p{M}\p{N}_-]+)*$/u.test(tag) || /^\p{N}+$/u.test(tag)) {
       const error = new Error(
-        'Некорректный тег «' +
+        'Invalid tag “' +
           tag +
-          '». Используйте буквы, цифры, дефис, подчёркивание или / между частями; тег не может состоять только из цифр.',
+          '”. Use letters, numbers, hyphens, underscores or / between segments. A tag cannot contain only numbers.',
       );
       error.code = 'INVALID_TAG';
       throw error;
@@ -1321,10 +1320,10 @@ function dayLabel(date, now = new Date()) {
   const a = new Date(date),
     b = new Date(now);
   const day = (d) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-  if (day(a) === day(b)) return 'Сегодня';
+  if (day(a) === day(b)) return 'Today';
   b.setDate(b.getDate() - 1);
-  if (day(a) === day(b)) return 'Вчера';
-  return a.toLocaleDateString('ru-RU', {
+  if (day(a) === day(b)) return 'Yesterday';
+  return a.toLocaleDateString('en-GB', {
     day: 'numeric',
     month: 'long',
     ...(a.getFullYear() !== now.getFullYear() ? { year: 'numeric' } : {}),
@@ -1394,10 +1393,10 @@ const FIELDS = {
 };
 const DEFAULT_SETTINGS = {
   appearance: 'obsidian',
-  tasksFolder: 'Задачи',
-  attachmentsFolder: 'Вложения',
-  materialsFolder: 'Материалы',
-  projectsFolder: 'Проекты',
+  tasksFolder: 'Tasks',
+  attachmentsFolder: 'Attachments',
+  materialsFolder: 'Materials',
+  projectsFolder: 'Projects',
   boardsFolder: '',
   templatesFolder: 'Templates/PikoBoard',
   taskTag: 'task',
@@ -1476,12 +1475,12 @@ function splitDocument(text, parseYaml) {
   const match = text.match(/^(\uFEFF?)---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
   if (!match) {
     if (/^\uFEFF?---(?:\r?\n|$)/.test(text))
-      throw new Error('Некорректные свойства заметки. Файл не изменён.');
+      throw new Error('Invalid note properties. The file was not changed.');
     return { data: {}, body: text, bom: '' };
   }
   const data = parseYaml(match[2]) ?? {};
   if (typeof data !== 'object' || Array.isArray(data))
-    throw new Error('Некорректные свойства заметки. Файл не изменён.');
+    throw new Error('Invalid note properties. The file was not changed.');
   return { data, body: text.slice(match[0].length), bom: match[1] };
 }
 function dateValue(value) {
@@ -1545,9 +1544,9 @@ class TaskStore {
   }
   boardForWrite(value) {
     if (value == null || value === '') return { id: '', config: null };
-    if (typeof value !== 'string' || value !== value.trim()) throw new Error('Некорректная доска');
+    if (typeof value !== 'string' || value !== value.trim()) throw new Error('Invalid board');
     const board = this.getBoard(value);
-    if (!board || board.id !== value) throw new Error('Доска не найдена');
+    if (!board || board.id !== value) throw new Error('Board not found');
     return { id: value, config: board };
   }
   validateStatus(status, boardId) {
@@ -1555,7 +1554,7 @@ class TaskStore {
       !this.statuses(boardId).some((item) => item.value === status) &&
       (boardId || !this.config.completedStatuses.includes(status))
     )
-      throw new Error('Неизвестный статус');
+      throw new Error('Unknown status');
   }
   systemTags() {
     const s = this.config;
@@ -1627,7 +1626,7 @@ class TaskStore {
     const s = this.config,
       f = s.fieldMapping,
       title = String(input.title || '').trim();
-    if (!title) throw new Error('Введите название задачи');
+    if (!title) throw new Error('Enter a task title');
     const board = this.boardForWrite(input.board);
     this.validateStatus(input.status, board.id);
     const tasksFolder = folderPath(board.config?.tasksFolder ?? s.tasksFolder);
@@ -1635,7 +1634,7 @@ class TaskStore {
     for (const name of tasksFolder.split('/').filter(Boolean)) {
       folder = folder ? folder + '/' + name : name;
       const existing = this.app.vault.getAbstractFileByPath(folder);
-      if (existing?.extension) throw new Error('Путь к папке занят файлом');
+      if (existing?.extension) throw new Error('A file already occupies this folder path');
       if (!existing) await this.app.vault.createFolder(folder);
     }
     const safe =
@@ -1643,7 +1642,7 @@ class TaskStore {
         .replace(/[\\/:*?"<>|\[\]#^]/g, ' ')
         .trim()
         .replace(/^\.+|\.+$/g, '')
-        .slice(0, 140) || 'Задача';
+        .slice(0, 140) || 'Task';
     const now = this.now().toISOString();
     const data = {
       [f.title]: title,
@@ -1676,7 +1675,7 @@ class TaskStore {
   }
   async update(path, patch, guard, receipt) {
     const file = this.app.vault.getAbstractFileByPath(path);
-    if (!file || file.extension !== 'md') throw new Error('Задача не найдена');
+    if (!file || file.extension !== 'md') throw new Error('Task not found');
     const s = this.config,
       f = s.fieldMapping;
     let result, change,
@@ -1684,7 +1683,7 @@ class TaskStore {
     await this.app.vault.process(file, (source) => {
       const { data, body, bom } = splitDocument(source, this.parseYaml);
       const before = this.fromData(file, data);
-      if (!before) throw new Error('Задача не найдена');
+      if (!before) throw new Error('Task not found');
       if (guard && !guard(before)) {
         result = before;
         return source;
@@ -1707,7 +1706,7 @@ class TaskStore {
       }
       if ('title' in patch) {
         if (typeof patch.title !== 'string' || !patch.title.trim())
-          throw new Error('Введите название задачи');
+          throw new Error('Enter a task title');
         data[f.title] = patch.title.trim();
       }
       if ('due' in patch) {
@@ -1753,21 +1752,21 @@ class TaskStore {
   }
   async undoChange(file, change) {
     if (this.app.vault.getAbstractFileByPath(file.path) !== file)
-      throw new Error('Задача удалена или заменена. Отмена недоступна.');
+      throw new Error('The task was deleted or replaced. Undo is unavailable.');
     const f = this.config.fieldMapping;
     if (JSON.stringify(f) !== change.mapping)
-      throw new Error('Настройки свойств изменились. Отмена недоступна.');
+      throw new Error('Property settings changed. Undo is unavailable.');
     let result;
     await this.app.vault.process(file, (source) => {
       const { data, body, bom } = splitDocument(source, this.parseYaml);
       const current = this.fromData(file, data);
-      if (!current) throw new Error('Задача не найдена');
+      if (!current) throw new Error('Task not found');
       const restored = restoreFields(data, change.fields);
       const structural = change.fields.some(({ key }) =>
         [f.status, 'board', f.completedDate].includes(key));
       if (structural) {
         if (current.board !== change.board || current.status !== change.status)
-          throw new Error('Статус или доска уже изменились. Отмена недоступна.');
+          throw new Error('The status or board changed. Undo is unavailable.');
         const target = this.fromData(file, restored);
         this.boardForWrite(target.board);
         this.validateStatus(target.status, target.board);
@@ -1836,7 +1835,7 @@ function changes(before, after, ignored) {
 function restoreFields(data, fields) {
   for (const field of fields)
     if (!equal(data[field.key], field.after))
-      throw new Error('Эти поля уже изменились. Отмена не затронула задачу.');
+      throw new Error('These properties changed. Undo left the task untouched.');
   const restored = { ...data };
   for (const field of fields) {
     if (field.before === undefined) delete restored[field.key];
@@ -2165,11 +2164,11 @@ class SavedFilters {
     const snapshot = normalizeFilters(filters);
     return this.change((records) => {
       const label = String(name || '').trim();
-      if (!label || label.length > 80) throw new Error('Название подборки – от 1 до 80 символов.');
+      if (!label || label.length > 80) throw new Error('Use 1–80 characters for the filter name.');
       if (records.some((x) => x.scope === scope && x.id !== id && x.name.toLocaleLowerCase() === label.toLocaleLowerCase()))
-        throw new Error('Подборка с таким названием уже есть.');
+        throw new Error('A saved filter with this name already exists.');
       if (id && !records.some((x) => x.id === id && x.scope === scope))
-        throw new Error('Подборка уже удалена.');
+        throw new Error('This saved filter was deleted.');
       const entry = { id: id || crypto.randomUUID(), scope, name: label, filters: snapshot, archive: !!archive };
       return id ? records.map((x) => x.id === id && x.scope === scope ? entry : x) : [...records, entry];
     });
@@ -2287,7 +2286,7 @@ class TaskTemplates {
   async read(file) {
     const source = await this.plugin.app.vault.read(file);
     if (splitDocument(source, this.parseYaml).data[MARKER] !== true)
-      throw new Error('Этот файл больше не является шаблоном');
+      throw new Error('This file is no longer a template');
     return templateContent(source, this.parseYaml, this.plugin.store.systemTags());
   }
   save(name, file) {
@@ -2316,9 +2315,9 @@ const C = require('../../domain/tasks.js');
 const { equal } = require('../../storage/task-change.js');
 
 function labelFor(patch) {
-  if ('archived' in patch) return patch.archived ? 'Задача в архиве' : 'Задача возвращена';
-  if ('board' in patch || 'status' in patch) return 'Карточка перемещена';
-  return 'Поля задачи изменены';
+  if ('archived' in patch) return patch.archived ? 'Task archived' : 'Task restored';
+  if ('board' in patch || 'status' in patch) return 'Card moved';
+  return 'Task properties updated';
 }
 
 // One undoable action per session. A drag changes status and order as one action.
@@ -2343,7 +2342,7 @@ class TaskActions {
   patch(file, patch) {
     return this.run(file, async () => {
       const current = await this.plugin.store.get(file.path);
-      if (!current) throw new Error('Задача не найдена');
+      if (!current) throw new Error('Task not found');
       if (typeof patch === 'function') patch = patch(current);
       const receipt = {};
       try {
@@ -2366,7 +2365,7 @@ class TaskActions {
   move(file, status, anchor, after) {
     return this.run(file, async () => {
       const task = await this.plugin.store.get(file.path);
-      if (!task) throw new Error('Задача не найдена');
+      if (!task) throw new Error('Task not found');
       const before = await this.order();
       const next = C.moveTaskOrder(before, file.path, anchor, after);
       const receipt = {};
@@ -2381,7 +2380,7 @@ class TaskActions {
           order = { before: files(before), after: files(next) };
         }
       } finally {
-        this.remember({ file, change: receipt.change, order, label: 'Карточка перемещена', title: task.title });
+        this.remember({ file, change: receipt.change, order, label: 'Card moved', title: task.title });
         this.plugin.refresh();
       }
     });
@@ -2393,14 +2392,14 @@ class TaskActions {
       const { file, change, order } = expected;
       const vault = this.plugin.app.vault;
       if (vault.getAbstractFileByPath(file.path) !== file)
-        throw new Error('Задача удалена или заменена. Отмена недоступна.');
+        throw new Error('The task was deleted or replaced. Undo is unavailable.');
       const current = await this.order();
       let restored = current;
       if (order) {
         const surviving = (files) => files.filter((f) => vault.getAbstractFileByPath(f.path) === f && current.includes(f.path)).map((f) => f.path);
         const after = surviving(order.after);
         if (!equal(current.filter((p) => after.includes(p)), after))
-          throw new Error('Порядок карточек уже изменился. Отмена недоступна.');
+          throw new Error('Card order changed. Undo is unavailable.');
         const before = surviving(order.before), index = before.indexOf(file.path);
         const next = before[index + 1], previous = before[index - 1];
         restored = C.moveTaskOrder(current, file.path, next || previous, !next && !!previous);
@@ -2416,7 +2415,7 @@ class TaskActions {
             // The position was restored, but its rollback could not be saved.
             // Keep the remaining field change retryable instead of replaying order.
             expected.order = undefined;
-            throw new Error('Позиция возвращена, но поля не сохранены. Повторите отмену.');
+            throw new Error('Position restored, but properties were not saved. Try undo again.');
           }
         }
         throw error;
@@ -2493,26 +2492,26 @@ function fileTitle(v) {
   return C.linkTarget(v).split('/').pop();
 }
 function dateText(v, now = new Date()) {
-  if (!v) return 'Срок';
+  if (!v) return 'Due date';
   const d = dueDate(v);
   return !d
     ? v
-    : d.toLocaleDateString('ru-RU', {
+    : d.toLocaleDateString('en-GB', {
         day: 'numeric',
         month: 'short',
         ...(d.getFullYear() !== now.getFullYear() ? { year: 'numeric' } : {}),
       });
 }
 function errorMessage(e) {
-  if (e.message === 'UPDATE_CONFLICT') return 'Запись уже изменена. Откройте её меню заново.';
+  if (e.message === 'UPDATE_CONFLICT') return 'This entry changed. Reopen its menu.';
   if (e.message === 'NEXT_CONFLICT')
-    return 'Следующий шаг уже изменён. Черновик сохранён — сверьте его с текущим шагом.';
+    return 'The next step changed. Your draft is saved – compare it with the current step.';
   if (e.message === 'HISTORY_FORMAT' || e.message === 'NEXT_FORMAT')
-    return 'Не удалось сохранить: служебные блоки заметки повреждены. Текст остался в черновике.';
+    return 'Could not save because the note structure is damaged. Your draft is saved.';
   if (e.message?.startsWith('INVALID_TAG:'))
-    return 'В теге можно использовать буквы, цифры, дефис, подчёркивание и /.';
+    return 'Tags can contain letters, numbers, hyphens, underscores and /.';
   if (e.message === 'BODY_CONFLICT')
-    return 'Текст изменён в другом окне. Ваша версия сохранена как черновик.';
+    return 'The text changed in another window. Your version is saved as a draft.';
   return e.message || String(e);
 }
 
@@ -2648,7 +2647,7 @@ function floatingPopup(anchor, cls) {
   return popup;
 }
 let activeActionMenu = null;
-function actionMenu(anchor, items, label = 'Действия с записью', app) {
+function actionMenu(anchor, items, label = 'Entry actions', app) {
   const previous = activeActionMenu;
   if (previous) {
     previous.close();
@@ -2752,6 +2751,11 @@ function picker(parent, label, aria, items, onChange, cls = '', options = {}) {
   trigger.setAttribute('aria-label', aria);
   trigger.setAttribute('aria-haspopup', 'listbox');
   trigger.setAttribute('aria-expanded', 'false');
+  if (options.icon) {
+    const mark = el(trigger, 'span', 'pb-filter-icon');
+    mark.setAttribute('aria-hidden', 'true');
+    setIcon(mark, options.icon);
+  }
   const caption = el(trigger, 'span', 'pb-picker-label', label);
   setIcon(el(trigger, 'span', 'pb-chevron'), 'chevron-down');
   const choices = () => typeof items === 'function' ? items() : items;
@@ -2883,7 +2887,7 @@ class AskModal extends Modal {
     input.placeholder = this.placeholder;
     input.setAttribute('aria-label', this.heading);
     input.required = !this.allowEmpty;
-    const send = icon(form, 'arrow-right', 'Подтвердить', () => form.requestSubmit());
+    const send = icon(form, 'arrow-right', 'Confirm', () => form.requestSubmit());
     form.onsubmit = async (e) => {
       e.preventDefault();
       if (this.busy || (!input.value.trim() && !this.allowEmpty)) return;
@@ -2911,14 +2915,14 @@ class DeleteConfirmModal extends Modal {
   onOpen() {
     this.modalEl.addClass('pb-delete-modal');
     this.contentEl.addClass('pikoboard');
-    el(this.contentEl, 'h3', '', 'Удалить задачу?');
+    el(this.contentEl, 'h3', '', 'Delete task?');
     el(this.contentEl, 'p', 'pb-delete-name', this.taskTitle);
-    el(this.contentEl, 'p', 'pb-delete-hint', 'Файл будет удалён способом, выбранным в настройках Obsidian.');
+    el(this.contentEl, 'p', 'pb-delete-hint', 'The file will be deleted using your Obsidian deletion preference.');
     const actions = el(this.contentEl, 'div', 'pb-delete-actions');
-    const cancel = button(actions, 'Отмена', () => this.close());
+    const cancel = button(actions, 'Cancel', () => this.close());
     button(
       actions,
-      'Удалить',
+      'Delete',
       () => {
         this.confirmed = true;
         this.close();
@@ -2944,7 +2948,7 @@ class ConfirmMessageModal extends Modal {
     el(this.contentEl, 'h3', '', this.heading);
     el(this.contentEl, 'p', 'pb-delete-name', this.text);
     const actions = el(this.contentEl, 'div', 'pb-delete-actions');
-    const cancel = button(actions, 'Отмена', () => this.close());
+    const cancel = button(actions, 'Cancel', () => this.close());
     button(
       actions,
       this.label,
@@ -2968,15 +2972,15 @@ class EditMessageModal extends Modal {
   onOpen() {
     this.modalEl.addClass('pb-message-editor');
     this.contentEl.addClass('pikoboard');
-    el(this.contentEl, 'h3', '', 'Изменить запись');
+    el(this.contentEl, 'h3', '', 'Edit entry');
     const input = el(this.contentEl, 'textarea', 'pb-message-edit-input');
     input.value = this.update.text;
-    input.setAttribute('aria-label', 'Текст записи');
+    input.setAttribute('aria-label', 'Entry text');
     const actions = el(this.contentEl, 'div', 'pb-delete-actions');
-    button(actions, 'Отмена', () => this.close());
+    button(actions, 'Cancel', () => this.close());
     const save = button(
       actions,
-      'Сохранить',
+      'Save',
       async () => {
         if (this.busy || !input.value.trim()) return;
         this.busy = true;
@@ -3176,8 +3180,8 @@ class JournalModel {
       await this.save();
       this.plugin.refresh();
       const fragment = document.createDocumentFragment();
-      el(fragment, 'span', '', 'Следующий шаг убран. ');
-      const undo = el(fragment, 'button', 'pb-notice-undo', 'Вернуть');
+      el(fragment, 'span', '', 'Next step cleared. ');
+      const undo = el(fragment, 'button', 'pb-notice-undo', 'Restore');
       undo.onclick = async () => {
         undo.disabled = true;
         try {
@@ -3291,7 +3295,7 @@ const BoardBase = (Base) =>
       return TYPE;
     }
     getDisplayText() {
-      return this.file?.basename || 'Все задачи';
+      return this.file?.basename || 'All tasks';
     }
     getIcon() {
       return 'columns-3';
@@ -3381,8 +3385,8 @@ const BoardBase = (Base) =>
       col.createInput = input;
       input.rows = 1;
       input.placeholder =
-        'Новая задача · ' + (this.boardColumns().find((s) => s.value === status)?.label || status);
-      input.setAttribute('aria-label', 'Новая задача');
+        'New task · ' + (this.boardColumns().find((s) => s.value === status)?.label || status);
+      input.setAttribute('aria-label', 'New task');
       const add = col.col.querySelector('.pb-add-task');
       add.hidden = true;
       const hide = () => {
@@ -3394,7 +3398,7 @@ const BoardBase = (Base) =>
         setTimeout(() => {
           if (!row.contains(document.activeElement) && !input.value.trim() && !row._busy && !row._picking) hide();
         }, 0);
-      const send = icon(entry, 'arrow-up', 'Создать задачу', () => row.requestSubmit());
+      const send = icon(entry, 'arrow-up', 'Create task', () => row.requestSubmit());
       send.classList.add('pb-create-send');
       send.hidden = true;
       const tools = el(row, 'div', 'pb-create-tools');
@@ -3411,7 +3415,7 @@ const BoardBase = (Base) =>
           if (selected) {
             row._template = selected.file;
             templateLabel.textContent = selected.label;
-            template.setAttribute('aria-label', 'Шаблон ' + selected.label);
+            template.setAttribute('aria-label', 'Template ' + selected.label);
             clearTemplate.hidden = false;
           }
           input.focus();
@@ -3421,12 +3425,12 @@ const BoardBase = (Base) =>
         } finally { row._picking = false; }
       }, 'pb-template-choice');
       setIcon(el(template, 'span'), 'copy-plus');
-      const templateLabel = el(template, 'span', '', 'Шаблон');
-      template.setAttribute('aria-label', 'Выбрать шаблон');
-      const clearTemplate = icon(tools, 'x', 'Убрать шаблон', () => {
+      const templateLabel = el(template, 'span', '', 'Template');
+      template.setAttribute('aria-label', 'Choose template');
+      const clearTemplate = icon(tools, 'x', 'Remove template', () => {
         row._template = null;
-        templateLabel.textContent = 'Шаблон';
-        template.setAttribute('aria-label', 'Выбрать шаблон');
+        templateLabel.textContent = 'Template';
+        template.setAttribute('aria-label', 'Choose template');
         clearTemplate.hidden = true;
         input.focus();
       });
@@ -3527,7 +3531,7 @@ const BoardBase = (Base) =>
       return [
         ...this.boardColumns(),
         ...((this.allTasks || []).some((t) => this.columnForTask(t) === '__unknown__')
-          ? [{ value: '__unknown__', label: 'Без столбца', color: '#858594', opacity: 0.05, icon: 'circle-help' }]
+          ? [{ value: '__unknown__', label: 'No column', color: '#858594', opacity: 0.05, icon: 'circle-help' }]
           : []),
       ];
     }
@@ -3626,7 +3630,7 @@ const BoardBase = (Base) =>
           if (inColumn && (matches || (!focus && this.recent.has(task.path)))) visible.push(task);
         }
       } catch (e) {
-        if (seq === this.seq) this.filterBar.showResult(0, scope.length, 'Не удалось выполнить поиск. Попробуйте ещё раз.');
+        if (seq === this.seq) this.filterBar.showResult(0, scope.length, 'Search failed. Try again.');
         console.error(e);
         return;
       }
@@ -3649,7 +3653,7 @@ const BoardBase = (Base) =>
       if (!this.columns) {
         this.columns = new Map();
         const columns = this.archive
-          ? [{ value: 'archive', label: 'Архив', color: '#858594', opacity: 0.05 }]
+          ? [{ value: 'archive', label: 'Archive', color: '#858594', opacity: 0.05 }]
           : shownColumns;
         const editable = this.boardConfig && !this.archive;
         this.area.style.gridTemplateColumns = `repeat(${columns.length}, minmax(min(260px, 85vw), 1fr))${editable ? ' 44px' : ''}`;
@@ -3672,10 +3676,10 @@ const BoardBase = (Base) =>
               new BoardSettingsModal(this.plugin, this.file, s.value).open(),
             );
           if (!this.archive && s.value !== '__unknown__')
-            button(col, '+ Задача', () => this.plugin.createTask(s.value, this), 'pb-add-task');
+            button(col, '+ Task', () => this.plugin.createTask(s.value, this), 'pb-add-task');
         }
         if (editable) {
-          const add = icon(this.area, 'plus', 'Добавить столбец', () =>
+          const add = icon(this.area, 'plus', 'Add column', () =>
             new AddColumnModal(this.plugin, this.file).open(),
           );
           add.classList.add('pb-add-column');
@@ -3737,27 +3741,30 @@ const BoardBase = (Base) =>
         'pb-board-title',
       );
       const nav = el(this.toolbar, 'div', 'pb-nav');
+      nav.setAttribute('aria-label', 'Task views');
       for (const [mode, label] of [
-        ['board', 'Все'],
-        [
-          'focus',
-          'В работе · ' + active.filter((t) => t.isActive ?? t.status === 'in-progress').length,
-        ],
-        ['archive', 'Архив'],
+        ['board', 'All tasks'],
+        ['focus', 'In progress'],
+        ['archive', 'Archive'],
       ]) {
         const selected = mode === 'archive' ? this.archive : !this.archive && this.mode === mode;
         const b = button(nav, label, () => this.switchMode(mode), selected ? 'is-active' : '');
         b.setAttribute('aria-pressed', String(selected));
+        if (mode === 'focus') {
+          const count = active.filter((t) => t.isActive ?? t.status === 'in-progress').length;
+          el(b, 'span', 'pb-nav-count', String(count)).setAttribute('aria-hidden', 'true');
+          b.setAttribute('aria-label', `${label}, ${count} ${count === 1 ? 'task' : 'tasks'}`);
+        }
       }
       const undoAction = this.plugin.actions?.last;
       const undoButton = icon(this.toolbar, 'undo-2',
-        undoAction ? 'Отменить · ' + undoAction.title : 'Нет действия для отмены',
+        undoAction ? 'Undo · ' + undoAction.title : 'Nothing to undo',
         () => this.plugin.undoTaskAction(undoAction));
       undoButton.classList.add('pb-task-undo');
       undoButton.disabled = !undoAction;
       button(
         this.toolbar,
-        '+ Задача',
+        '+ Task',
         () =>
           this.plugin.createTask(
             (focus ? this.boardColumns().find((s) => s.kind === 'active') : this.visibleColumns().find((s) => s.value !== '__unknown__'))
@@ -3766,7 +3773,7 @@ const BoardBase = (Base) =>
           ),
         'pb-new',
       );
-      const optionsButton = icon(this.toolbar, 'ellipsis', 'Меню доски', () =>
+      const optionsButton = icon(this.toolbar, 'ellipsis', 'Board menu', () =>
         actionMenu(
           optionsButton,
           [
@@ -3783,16 +3790,16 @@ const BoardBase = (Base) =>
                     action: () => new BoardStorageModal(this.plugin, this.file).open(),
                   },
                   {
-                    label: 'Добавить существующую задачу',
+                    label: 'Add existing task',
                     icon: 'list-plus',
                     action: () => this.plugin.addExisting(this),
                   },
                 ]
               : []),
-            { label: 'Создать доску', icon: 'plus', action: () => this.plugin.newBoard() },
-            { label: 'Все задачи', icon: 'panels-top-left', action: () => this.plugin.openBoard() },
+            { label: 'Create board', icon: 'plus', action: () => this.plugin.newBoard() },
+            { label: 'All tasks', icon: 'panels-top-left', action: () => this.plugin.openBoard() },
           ],
-          'Меню доски',
+          'Board menu',
           this.app,
         ),
       );
@@ -3807,7 +3814,7 @@ const BoardBase = (Base) =>
       const choices = [
         {
           value: '',
-          label: focus ? 'Все домены' : 'Все',
+          label: focus ? 'All projects' : 'All',
           count: focus
             ? active.filter((t) => t.isActive ?? t.status === 'in-progress').length
             : scope.length,
@@ -3819,7 +3826,7 @@ const BoardBase = (Base) =>
         })),
         {
           value: '__none__',
-          label: 'Без проекта',
+          label: 'No project',
           count: scope.filter((t) => !t.projects.length).length,
         },
       ];
@@ -3861,7 +3868,7 @@ const BoardBase = (Base) =>
         () => new TaskModal(this.plugin, file).open(),
         'pb-task-title',
       );
-      c.toggle = icon(head, 'chevron-down', 'Подробности задачи', async () => {
+      c.toggle = icon(head, 'chevron-down', 'Task details', async () => {
         const open = !this.expanded.has(file.path);
         if (open) this.expanded.add(file.path);
         else this.expanded.delete(file.path);
@@ -3950,19 +3957,19 @@ const BoardBase = (Base) =>
           );
         menu.addSeparator();
         menu.addItem((i) =>
-          i.setTitle(c.task.archived ? 'Вернуть' : 'В архив').onClick(() => this.archiveTask(c)),
+          i.setTitle(c.task.archived ? 'Restore' : 'Archive').onClick(() => this.archiveTask(c)),
         );
         menu.addItem((i) =>
           i
-            .setTitle('Перенести на доску')
+            .setTitle('Move to board')
             .setIcon('columns-3')
             .onClick(() => this.plugin.chooseTaskBoard(file)),
         );
-        menu.addItem((i) => i.setTitle('Открыть файл').onClick(() => this.plugin.openFile(file)));
+        menu.addItem((i) => i.setTitle('Open file').onClick(() => this.plugin.openFile(file)));
         menu.addSeparator();
         menu.addItem((i) =>
           i
-            .setTitle('Удалить задачу')
+            .setTitle('Delete task')
             .setIcon('trash-2')
             .onClick(() =>
               this.plugin.requestTrash(file).catch((err) => new Notice(errorMessage(err))),
@@ -3971,7 +3978,7 @@ const BoardBase = (Base) =>
         menu.showAtMouseEvent(e);
       };
       c.meta = el(node, 'div', 'pb-meta');
-      if (this.archive) button(node, 'Вернуть', () => this.archiveTask(c), 'pb-restore');
+      if (this.archive) button(node, 'Restore', () => this.archiveTask(c), 'pb-restore');
       c.journal = el(node, 'div', 'pb-card-journal');
       c.journal.hidden = !this.expanded.has(file.path);
       c.nextWrap = nextStep(c.journal, this.plugin, file, async () => {
@@ -3983,7 +3990,7 @@ const BoardBase = (Base) =>
       });
       c.feed = el(c.journal, 'div', 'pb-feed');
       c.feed.setAttribute('role', 'region');
-      c.feed.setAttribute('aria-label', 'История задачи');
+      c.feed.setAttribute('aria-label', 'Task history');
       c.composer = new JournalComposer(this.plugin, file, c.journal);
       return c;
     }
@@ -3992,7 +3999,7 @@ const BoardBase = (Base) =>
       header.tabIndex = 0;
       header.setAttribute(
         'aria-label',
-        'Передвинуть столбец ' + this.boardColumns().find((c) => c.value === value)?.label,
+        'Move column ' + this.boardColumns().find((c) => c.value === value)?.label,
       );
       header.onkeydown = (event) => {
         if (
@@ -4113,7 +4120,7 @@ const BoardBase = (Base) =>
         const source = await this.app.vault.read(this.file),
           board = B.parseBoard(source);
         if (JSON.stringify(board) !== expected)
-          throw new Error('Доска уже изменена. Повторите перемещение.');
+          throw new Error('The board changed. Try moving the column again.');
         const moved = board.columns.find((c) => c.value === value);
         board.columns = board.columns.filter((c) => c.value !== value);
         const index = board.columns.findIndex((c) => c.value === anchor) + (after ? 1 : 0);
@@ -4162,7 +4169,7 @@ const BoardBase = (Base) =>
             currentKind === kind
               ? task.status
               : this.plugin.columnsFor(task).find((s) => s.kind === kind)?.value;
-          if (!status) throw new Error('Перенесите задачу в нужный столбец на её доске.');
+          if (!status) throw new Error('Move this task to a column on its own board.');
         }
         await this.plugin.actions.move(file, status, anchor, after);
       } catch (e) {
@@ -4210,7 +4217,7 @@ const BoardBase = (Base) =>
         const badge = el(c.meta, 'span', 'pb-badge pb-due', due.text);
         applyDueAppearance(badge, due);
       }
-      if (!matches) el(c.meta, 'span', 'pb-badge', 'Вне фильтра');
+      if (!matches) el(c.meta, 'span', 'pb-badge', 'Outside current filters');
       c.meta.hidden = !c.meta.children.length;
     }
   };
@@ -4233,11 +4240,11 @@ const { dateText } = require('./format.js');
 function duePresentation(task, now = new Date()) {
   const state = dueState(task, now);
   const date = dateText(task.due, now);
-  const context = { overdue: 'Просрочено', today: 'Сегодня', soon: 'Скоро' }[state] || 'Срок';
+  const context = { overdue: 'Overdue', today: 'Today', soon: 'Due soon' }[state] || 'Due date';
   return {
     state,
-    text: state === 'today' ? 'Сегодня' : date,
-    label: task.due ? `${context} · ${date}` : 'Срок',
+    text: state === 'today' ? 'Today' : date,
+    label: task.due ? `${context} · ${date}` : 'Due date',
   };
 }
 
@@ -4269,10 +4276,10 @@ class FilterBar {
     setIcon(el(search, 'span', 'pb-search-icon'), 'search');
     this.input = el(search, 'input', 'pb-search-input');
     this.input.type = 'search';
-    this.input.placeholder = 'Поиск задач';
-    this.input.setAttribute('aria-label', 'Поиск задач');
+    this.input.placeholder = 'Search tasks';
+    this.input.setAttribute('aria-label', 'Search tasks');
     this.input.value = view.filters.query || '';
-    this.clear = icon(search, 'x', 'Очистить поиск', () => this.setQuery(''));
+    this.clear = icon(search, 'x', 'Clear search', () => this.setQuery(''));
     this.input.oninput = (e) => {
       // Keep the same input node and caret while results and counts change.
       view.filters.query = this.input.value;
@@ -4323,7 +4330,7 @@ class FilterBar {
   }
   save(preset, rename = false) {
     const scope = this.scope(), filters = F.normalizeFilters(this.view.filters), archive = this.view.archive;
-    new AskModal(this.view.app, rename ? 'Название подборки' : 'Сохранить подборку', 'Название подборки',
+    new AskModal(this.view.app, rename ? 'Filter name' : 'Save filters', 'Filter name',
       (name) => this.view.plugin.savedFilters.save(scope, name, filters, archive, rename ? preset.id : undefined),
       rename ? preset.name : '',
     ).open();
@@ -4334,18 +4341,18 @@ class FilterBar {
       label: p.name, icon: p.id === selected?.id ? 'check' : 'bookmark', action: () => this.apply(p),
     }));
     if (items.length) items.push({ separator: true });
-    items.push({ label: 'Сохранить подборку…', icon: 'bookmark-plus', action: () => this.save() });
+    items.push({ label: 'Save filters…', icon: 'bookmark-plus', action: () => this.save() });
     if (selected) items.push(
-      { label: 'Переименовать подборку', icon: 'pencil', action: () => this.save(selected, true) },
-      { label: 'Удалить подборку', icon: 'trash-2', danger: true, action: async () => {
+      { label: 'Rename saved filter', icon: 'pencil', action: () => this.save(selected, true) },
+      { label: 'Delete saved filter', icon: 'trash-2', danger: true, action: async () => {
         const scope = this.scope();
         const confirmed = await new Promise((resolve) => new ConfirmMessageModal(
-          this.view.app, 'Удалить подборку?', selected.name, 'Удалить', resolve, true,
+          this.view.app, 'Delete saved filter?', selected.name, 'Delete', resolve, true,
         ).open());
         if (confirmed) await this.view.plugin.savedFilters.remove(scope, selected.id);
       } },
     );
-    actionMenu(anchor, items, 'Подборки', this.view.app);
+    actionMenu(anchor, items, 'Saved filters', this.view.app);
   }
   update() {
     const v = this.view, f = F.normalizeFilters(v.filters);
@@ -4357,10 +4364,9 @@ class FilterBar {
     const statuses = v.availableColumns();
     const columnLabel = () => {
       const shown = v.visibleColumns();
-      return shown.length === statuses.length ? 'Все столбцы' : `Столбцы · ${shown.length} из ${statuses.length}`;
+      return shown.length === statuses.length ? 'Status' : `Status (${shown.length})`;
     };
-    const tagLabel = () => v.filters.tags.length
-      ? v.filters.tags.map((t) => t === '__none__' ? 'Без тегов' : '#' + t).join(', ') : 'Все теги';
+    const tagLabel = () => v.filters.tags.length ? `Tags (${v.filters.tags.length})` : 'Tags';
     if (this.tagsButton?._isOpen() && v.mode !== 'focus') {
       this.tagsButton._update(tagLabel());
       return;
@@ -4379,20 +4385,20 @@ class FilterBar {
     this.controls.querySelectorAll('.pb-picker-wrap').forEach((w) => w._dispose?.());
     this.controls.replaceChildren();
     const tagsButton = this.tagsButton = picker(this.controls, tagLabel(),
-      'Фильтр по тегам', () => [
-        { value: '', label: 'Все теги', selected: !v.filters.tags.length },
-        ...['__none__', ...tags].map((t) => ({ value: t, label: t === '__none__' ? 'Без тегов' : '#' + t, selected: v.filters.tags.includes(t) })),
+      'Filter by tags', () => [
+        { value: '', label: 'All tags', selected: !v.filters.tags.length },
+        ...['__none__', ...tags].map((t) => ({ value: t, label: t === '__none__' ? 'Untagged' : '#' + t, selected: v.filters.tags.includes(t) })),
       ], ({ value }) => {
         const current = v.filters.tags;
         v.filters.tags = !value ? [] : current.includes(value) ? current.filter((x) => x !== value)
           : value === '__none__' ? [value] : [...current.filter((x) => x !== '__none__'), value];
         v.changed();
-      }, 'pb-filter' + (f.tags.length ? ' is-active' : ''), { multiple: true, onClose: () => this.update() });
+      }, 'pb-filter' + (f.tags.length ? ' is-active' : ''), { icon: 'tags', multiple: true, onClose: () => this.update() });
     const columnButton = this.columnButton = v.archive ? null : picker(this.controls, columnLabel(),
-      'Видимые столбцы', () => {
+      'Filter by status', () => {
         const shown = v.visibleColumns().map((c) => c.value);
         return [
-          { value: '', label: 'Все столбцы', selected: shown.length === statuses.length },
+          { value: '', label: 'All statuses', selected: shown.length === statuses.length },
           ...statuses.map((s) => ({ ...s, selected: shown.includes(s.value), disabled: shown.length === 1 && shown[0] === s.value })),
         ];
       }, ({ value }) => {
@@ -4400,21 +4406,21 @@ class FilterBar {
         const next = !value ? [] : shown.includes(value) ? shown.filter((x) => x !== value) : [...shown, value];
         v.filters.statuses = next.length === statuses.length ? [] : next;
         v.changed();
-      }, 'pb-filter' + (f.statuses.length ? ' is-active' : ''), { multiple: true, onClose: () => this.update() });
+      }, 'pb-filter' + (f.statuses.length ? ' is-active' : ''), { icon: 'list-filter', multiple: true, onClose: () => this.update() });
     const saved = button(this.controls, '', () => this.menu(saved), 'pb-saved-filter' + (selected ? ' is-active' : ''));
     setIcon(el(saved, 'span'), 'bookmark');
-    el(saved, 'span', 'pb-picker-label', selected?.name || 'Подборки');
-    saved.setAttribute('aria-label', 'Подборки' + (selected ? ' · ' + selected.name : ''));
-    saved.setAttribute('title', selected?.name || 'Подборки');
+    el(saved, 'span', 'pb-picker-label', selected ? `Saved filters · ${selected.name}` : 'Saved filters');
+    saved.setAttribute('aria-label', 'Saved filters' + (selected ? ' · ' + selected.name : ''));
+    saved.setAttribute('title', 'Save and reuse the current filters');
     saved.setAttribute('aria-haspopup', 'menu');
-    if (F.hasFilters(f)) icon(this.controls, 'x', 'Сбросить все фильтры', () => this.reset());
+    if (F.hasFilters(f)) icon(this.controls, 'x', 'Clear filters', () => this.reset());
     if (focusedLabel) {
       const target = [tagsButton, columnButton, saved].find((b) => b?.getAttribute('aria-label') === focusedLabel);
       (target || this.input).focus();
     }
   }
   showResult(count, total, error = '') {
-    this.result.textContent = error || (F.hasFilters(this.view.filters) ? count ? `${count} из ${total}` : 'Ничего не найдено' : '');
+    this.result.textContent = error || (F.hasFilters(this.view.filters) ? count ? `${count} of ${total}` : 'No matching tasks' : '');
     this.result.classList.toggle('is-error', !!error);
   }
   dispose() {
@@ -4442,29 +4448,29 @@ class JournalComposer {
     this.disposed = false;
     this.form = el(parent, 'form', 'pb-journal-composer');
     const modes = el(this.form, 'div', 'pb-composer-modes');
-    this.noteButton = button(modes, 'Запись', () => this.setMode('note'), 'pb-composer-mode');
+    this.noteButton = button(modes, 'Entry', () => this.setMode('note'), 'pb-composer-mode');
     this.nextButton = button(
       modes,
-      'Следующий шаг',
+      'Next step',
       () => this.setMode('next'),
       'pb-composer-mode',
     );
     this.input = el(this.form, 'textarea', 'pb-comment-input');
     this.input.rows = 1;
     const actions = el(this.form, 'div', 'pb-composer-actions');
-    this.attach = icon(actions, 'paperclip', 'Прикрепить к записи', (e) => this.attachMenu(e));
+    this.attach = icon(actions, 'paperclip', 'Attach to entry', (e) => this.attachMenu(e));
     this.attach.classList.add('pb-attach');
     this.checklist = button(actions, '', () => this.addChecklist(), 'pb-compose-checklist');
     setIcon(el(this.checklist, 'span', 'pb-menu-icon'), 'list-checks');
-    el(this.checklist, 'span', '', 'Чеклист');
-    this.checklist.setAttribute('aria-label', 'Добавить пункт чеклиста');
-    this.send = icon(actions, 'arrow-up', 'Записать', () => this.form.requestSubmit());
+    el(this.checklist, 'span', '', 'Checklist');
+    this.checklist.setAttribute('aria-label', 'Add checklist item');
+    this.send = icon(actions, 'arrow-up', 'Post entry', () => this.form.requestSubmit());
     this.send.classList.add('pb-send');
     this.error = el(this.form, 'div', 'pb-compose-error');
     this.error.setAttribute('role', 'status');
     this.rebase = button(
       this.form,
-      'Сверить с текущим шагом',
+      'Compare with current step',
       () => this.model.rebaseNext().catch((e) => this.model.fail(e)),
       'pb-rebase',
     );
@@ -4533,8 +4539,8 @@ class JournalComposer {
     const isNext = this.mode === 'next',
       value = isNext ? (this.model.nextDraft ?? this.model.next) : this.model.update;
     if (this.input.value !== value) this.input.value = value;
-    this.input.placeholder = isNext ? 'Что сделать дальше?' : 'Что изменилось?';
-    this.input.setAttribute('aria-label', isNext ? 'Следующий шаг' : 'Комментарий');
+    this.input.placeholder = isNext ? 'What is next?' : 'What changed?';
+    this.input.setAttribute('aria-label', isNext ? 'Next step' : 'Comment');
     this.noteButton.classList.toggle('is-active', !isNext);
     this.nextButton.classList.toggle('is-active', isNext);
     this.noteButton.setAttribute('aria-pressed', String(!isNext));
@@ -4549,11 +4555,11 @@ class JournalComposer {
           this.model.nextDraft === undefined ||
           this.model.nextDraft.trim() === (this.model.nextBase || '')
         : !value.trim());
-    this.send.setAttribute('aria-label', isNext ? 'Сохранить шаг' : 'Записать');
+    this.send.setAttribute('aria-label', isNext ? 'Save step' : 'Post entry');
     this.send.classList.toggle('pb-save-step', isNext);
     if (this.sendMode !== this.mode) {
       this.sendMode = this.mode;
-      if (isNext) this.send.textContent = 'Сохранить шаг';
+      if (isNext) this.send.textContent = 'Save step';
       else {
         this.send.textContent = '';
         setIcon(this.send, 'arrow-up');
@@ -4561,7 +4567,7 @@ class JournalComposer {
     }
     this.attach.setAttribute(
       'aria-label',
-      isNext ? 'Прикрепить к следующему шагу' : 'Прикрепить к записи',
+      isNext ? 'Attach to next step' : 'Attach to entry',
     );
     this.error.textContent = this.model.error;
     this.error.hidden = !this.model.error;
@@ -4598,7 +4604,7 @@ class JournalComposer {
       menu = new Menu();
     menu.addItem((i) =>
       i
-        .setTitle('Заметка или исследование')
+        .setTitle('Note or research')
         .setIcon('file-text')
         .onClick(() =>
           this.plugin.chooseNote(this.file, (target) => this.appendLink(target, mode)),
@@ -4606,7 +4612,7 @@ class JournalComposer {
     );
     menu.addItem((i) =>
       i
-        .setTitle('Файл')
+        .setTitle('File')
         .setIcon('paperclip')
         .onClick(() =>
           this.plugin
@@ -4636,11 +4642,11 @@ const { el, icon } = require('../../ui/elements.js');
 function nextStep(parent, plugin, file, edit) {
   const wrap = el(parent, 'div', 'pb-next-step');
   wrap.hidden = true;
-  el(wrap, 'span', 'pb-next-label', 'Следующий шаг');
+  el(wrap, 'span', 'pb-next-label', 'Next step');
   const content = el(wrap, 'div', 'pb-next-text markdown-rendered');
-  const change = icon(wrap, 'pencil', 'Изменить следующий шаг', edit);
+  const change = icon(wrap, 'pencil', 'Edit next step', edit);
   change.classList.add('pb-next-edit');
-  const done = icon(wrap, 'x', 'Убрать следующий шаг', () => model.clearNext());
+  const done = icon(wrap, 'x', 'Clear next step', () => model.clearNext());
   done.classList.add('pb-next-remove');
   const model = plugin.journal(file);
   let signature = null,
@@ -4690,7 +4696,7 @@ function nextStep(parent, plugin, file, edit) {
             box.dataset.pbCheck = 'true';
             box.disabled = !!model.busy;
             box.checked = item.checked;
-            box.setAttribute('aria-label', item.text || 'Пункт чеклиста');
+            box.setAttribute('aria-label', item.text || 'Checklist item');
             box.onclick = (e) => e.stopPropagation();
             box.onchange = async () => {
               const checked = box.checked;
@@ -5406,7 +5412,7 @@ class TaskModal extends Modal {
     this.contentEl.addClass('pikoboard');
     try {
       this.task = await this.plugin.api().tasks.get(this.file.path);
-      if (!this.task) throw new Error('Задача не найдена');
+      if (!this.task) throw new Error('Task not found');
       const note = await this.plugin.note(this.file);
       if (this.closed) return;
       let draft = this.plugin.draft(this.file.path);
@@ -5433,7 +5439,7 @@ class TaskModal extends Modal {
     this.titleInput = el(top, 'textarea', 'pb-title-input');
     this.titleInput.rows = 1;
     this.titleInput.value = this.task.title || this.file.basename;
-    this.titleInput.setAttribute('aria-label', 'Название задачи');
+    this.titleInput.setAttribute('aria-label', 'Task title');
     this.titleInput.oninput = () => grow(this.titleInput, 32, 130);
     this.titleInput.onchange = () => this.commitTitle();
     this.titleInput.onkeydown = (e) => {
@@ -5443,33 +5449,33 @@ class TaskModal extends Modal {
       }
     };
     const actions = el(top, 'div', 'pb-actions');
-    icon(actions, 'trash-2', 'Удалить задачу', () =>
+    icon(actions, 'trash-2', 'Delete task', () =>
       this.plugin.requestTrash(this.file).catch((e) => this.fail(e)),
     ).classList.add('pb-trash');
-    icon(actions, 'ellipsis', 'Действия', (e) => {
+    icon(actions, 'ellipsis', 'Actions', (e) => {
       const menu = new Menu();
       menu.addItem((i) =>
         i
-          .setTitle('Перенести на доску')
+          .setTitle('Move to board')
           .setIcon('columns-3')
           .onClick(async () => {
             if (await this.flushSafe()) this.plugin.chooseTaskBoard(this.file);
           }),
       );
       menu.addItem((i) =>
-        i.setTitle('Сохранить как шаблон').setIcon('copy-plus').onClick(async () => {
+        i.setTitle('Save as template').setIcon('copy-plus').onClick(async () => {
           try {
             if (await this.close()) this.plugin.newTemplate(this.file);
           } catch (error) { this.fail(error); }
         }),
       );
       menu.addItem((i) =>
-        i.setTitle('Открыть файл').onClick(async () => {
+        i.setTitle('Open file').onClick(async () => {
           if (await this.close()) this.plugin.openFile(this.file);
         }),
       );
       menu.addItem((i) =>
-        i.setTitle(this.task.archived ? 'Вернуть' : 'В архив').onClick(async () => {
+        i.setTitle(this.task.archived ? 'Restore' : 'Archive').onClick(async () => {
           if (!(await this.flushSafe())) return;
           try {
             await this.plugin.patch(this.file, { archived: !this.task.archived });
@@ -5490,8 +5496,8 @@ class TaskModal extends Modal {
     this.editor.hidden = false;
     this.editor.value = this.session.value.trim() ? this.session.value : '';
     this.previewEl.hidden = true;
-    this.editor.placeholder = 'Описание';
-    this.editor.setAttribute('aria-label', 'Описание');
+    this.editor.placeholder = 'Description';
+    this.editor.setAttribute('aria-label', 'Description');
     this.editor.oninput = () => this.inputBody();
     this.editor.onblur = () => this.finishEdit();
     this.editor.onkeydown = (e) => {
@@ -5505,7 +5511,7 @@ class TaskModal extends Modal {
     this.bodyTools = tools;
     const checklist = button(tools, '', () => this.addChecklist(), 'pb-tool');
     setIcon(el(checklist, 'span'), 'list-todo');
-    el(checklist, 'span', '', 'Чеклист');
+    el(checklist, 'span', '', 'Checklist');
     const materials = button(
       tools,
       '',
@@ -5513,26 +5519,26 @@ class TaskModal extends Modal {
         const menu = new Menu();
         menu.addItem((i) =>
           i
-            .setTitle('Заметка')
+            .setTitle('Note')
             .onClick(() => this.plugin.chooseNote(this.file, (target) => this.attachNote(target))),
         );
-        menu.addItem((i) => i.setTitle('Файл').onClick(() => this.upload()));
+        menu.addItem((i) => i.setTitle('File').onClick(() => this.upload()));
         menu.showAtMouseEvent(e);
       },
       'pb-tool',
     );
     setIcon(el(materials, 'span'), 'paperclip');
-    el(materials, 'span', '', 'Материалы');
+    el(materials, 'span', '', 'Materials');
     this.saveState = el(tools, 'span', 'pb-save-state');
     this.saveState.setAttribute('role', 'status');
     const journal = el(this.contentEl, 'section', 'pb-journal');
-    journal.setAttribute('aria-label', 'Обновления задачи');
+    journal.setAttribute('aria-label', 'Task journal');
     this.nextWrap = nextStep(journal, this.plugin, this.file, () =>
       this.journalComposer.setMode('next'),
     );
     this.feed = el(journal, 'div', 'pb-feed pb-modal-feed');
     this.feed.setAttribute('role', 'region');
-    this.feed.setAttribute('aria-label', 'История');
+    this.feed.setAttribute('aria-label', 'History');
     this.journalComposer = new JournalComposer(this.plugin, this.file, journal);
     this.updateInput = this.journalComposer.input;
     this.send = this.journalComposer.send;
@@ -5580,7 +5586,7 @@ class TaskModal extends Modal {
       this.editor = fallback;
       host.remove();
       console.error('Embedded editor unavailable', e);
-      new Notice('Редактор Obsidian не загрузился. Описание доступно в текстовом поле.');
+      new Notice('The Obsidian editor could not load. You can edit the description in the text field.');
     }
   }
   commitTitle() {
@@ -5624,7 +5630,7 @@ class TaskModal extends Modal {
     const statusButton = picker(
       propertyRow('Status'),
       columns.find((s) => s.value === this.task.status)?.label || this.task.status,
-      'Статус',
+      'Status',
       columns.map((s) => ({
         value: s.value,
         label: s.label,
@@ -5650,9 +5656,9 @@ class TaskModal extends Modal {
       () => this.plugin.chooseProject((link) => this.change({ projects: link ? [link] : [] })),
       'pb-chip pb-picker ' + (p ? 'pb-project pb-color-' + C.colorFor(key) : ''),
     );
-    el(b, 'span', 'pb-picker-label', p ? fileTitle(p) : 'Проект');
+    el(b, 'span', 'pb-picker-label', p ? fileTitle(p) : 'Project');
     setIcon(el(b, 'span', 'pb-chevron'), 'chevron-down');
-    b.setAttribute('aria-label', 'Проект');
+    b.setAttribute('aria-label', 'Project');
     const date = button(propertyRow('Due date'), '', () => this.showCalendar(), 'pb-chip pb-date-button pb-due');
     setIcon(el(date, 'span'), 'calendar-days');
     this.dateLabel = el(date, 'span');
@@ -5688,23 +5694,23 @@ class TaskModal extends Modal {
     const popup = floatingPopup(this.dateButton, 'pb-calendar');
     this.calendar = popup;
     popup.setAttribute('role', 'dialog');
-    popup.setAttribute('aria-label', 'Срок');
+    popup.setAttribute('aria-label', 'Due date');
     const current = this.task.due ? new Date(this.task.due.slice(0, 10) + 'T12:00:00') : new Date();
     let month = new Date(current.getFullYear(), current.getMonth(), 1);
     const render = () => {
       popup.replaceChildren();
       const header = el(popup, 'div', 'pb-calendar-header');
-      icon(header, 'chevron-left', 'Предыдущий месяц', () => {
+      icon(header, 'chevron-left', 'Previous month', () => {
         month.setMonth(month.getMonth() - 1);
         render();
       }).classList.add('pb-calendar-nav');
-      el(header, 'span', '', month.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' }));
-      icon(header, 'chevron-right', 'Следующий месяц', () => {
+      el(header, 'span', '', month.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }));
+      icon(header, 'chevron-right', 'Next month', () => {
         month.setMonth(month.getMonth() + 1);
         render();
       }).classList.add('pb-calendar-nav');
       const grid = el(popup, 'div', 'pb-calendar-grid');
-      ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].forEach((d) =>
+      ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].forEach((d) =>
         el(grid, 'span', 'pb-calendar-weekday', d),
       );
       const start = new Date(month);
@@ -5728,14 +5734,14 @@ class TaskModal extends Modal {
         );
         day.setAttribute(
           'aria-label',
-          date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }),
+          date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }),
         );
         if (date.getMonth() !== month.getMonth()) day.classList.add('is-outside');
         if (date.toDateString() === new Date().toDateString()) day.classList.add('is-today');
         if (value === this.task.due?.slice(0, 10)) day.classList.add('is-selected');
       }
       const footer = el(popup, 'div', 'pb-calendar-footer');
-      button(footer, 'Без срока', async () => {
+      button(footer, 'No due date', async () => {
         this.closeCalendar();
         try {
           this.task = await this.plugin.patch(this.file, { due: null });
@@ -5807,7 +5813,7 @@ class TaskModal extends Modal {
     this.saveState.classList.remove('is-error');
     this.saveState.textContent = '';
     setIcon(this.saveState, 'check');
-    this.saveState.setAttribute('aria-label', 'Сохранено');
+    this.saveState.setAttribute('aria-label', 'Saved');
     clearTimeout(this.savedTimer);
     this.savedTimer = setTimeout(() => {
       if (!this.closed) this.saveState.replaceChildren();
@@ -5847,17 +5853,17 @@ class TaskModal extends Modal {
     if (this.closed) return;
     if (this.saveState) {
       this.saveState.classList.add('is-error');
-      this.saveState.textContent = 'Не сохранено';
+      this.saveState.textContent = 'Not saved';
     }
     new Notice(errorMessage(e), 7000);
     if (e.message === 'BODY_CONFLICT' && !this.recoverButton)
       this.recoverButton = button(
         this.contentEl,
-        'Сохранить копию',
+        'Save a copy',
         async () => {
           const f = await this.plugin.uniqueNote(
             this.plugin.settings.materialsFolder,
-            this.file.basename + ' — моя версия',
+            this.file.basename + ' – my version',
             this.session.value,
           );
           const note = await this.plugin.note(this.file);
@@ -5937,12 +5943,12 @@ class TaskModal extends Modal {
       });
     };
     if (!checks.length) {
-      if (!body.trim()) button(this.previewEl, 'Описание', () => this.edit(), 'pb-placeholder');
+      if (!body.trim()) button(this.previewEl, 'Description', () => this.edit(), 'pb-placeholder');
       else await chunk(0, lines.length);
       return;
     }
     if (!lines.slice(0, checks[0].line).join('\n').trim())
-      button(this.previewEl, 'Описание', () => this.edit(0, checks[0].line), 'pb-placeholder');
+      button(this.previewEl, 'Description', () => this.edit(0, checks[0].line), 'pb-placeholder');
     for (const item of checks) {
       await chunk(previous, item.line);
       if (seq !== this.renderSeq) return;
@@ -5951,11 +5957,11 @@ class TaskModal extends Modal {
       const box = el(row, 'input');
       box.type = 'checkbox';
       box.checked = item.checked;
-      box.setAttribute('aria-label', item.text || 'Выполнено');
+      box.setAttribute('aria-label', item.text || 'Completed');
       const text = el(row, 'input', 'pb-check-text');
       text.value = item.text;
-      text.placeholder = 'Пункт';
-      text.setAttribute('aria-label', 'Пункт чеклиста');
+      text.placeholder = 'Item';
+      text.setAttribute('aria-label', 'Checklist item');
       row.classList.toggle('is-complete', box.checked);
       box.onchange = () => {
         try {
@@ -6213,7 +6219,7 @@ function richEditor(app, container, value, onChange) {
     buildLocalExtensions() {
       const extensions = super.buildLocalExtensions();
       const { placeholder } = require('@codemirror/view');
-      extensions.push(placeholder('Описание'));
+      extensions.push(placeholder('Description'));
       return extensions;
     }
   }
@@ -6245,7 +6251,7 @@ function richEditor(app, container, value, onChange) {
     owner.editor = instance.editor;
     instance.set(value);
     content = instance.editor.cm.contentDOM;
-    content.setAttribute('aria-label', 'Описание');
+    content.setAttribute('aria-label', 'Description');
     content.addEventListener('focusin', focus);
     content.addEventListener('blur', restore);
     instance.changed = onChange;
@@ -6270,7 +6276,7 @@ run: (module, exports, require) => {
 const C = require('../../domain/tasks.js');
 const { el, icon } = require('../../ui/elements.js');
 
-const key = (value) => value.normalize('NFC').toLocaleLowerCase('ru-RU');
+const key = (value) => value.normalize('NFC').toLocaleLowerCase('en-GB');
 function applyTagEdit(tags, edit, system) {
   const next = edit.remove
     ? C.tagList(tags).filter((tag) => key(tag) !== key(edit.remove))
@@ -6284,12 +6290,12 @@ class TagEditor {
     this.operations = (options.draft?.tagOperations || []).map((edit) => ({ ...edit }));
     this.node = el(parent, 'div', 'pb-tag-editor');
     this.node.setAttribute('role', 'group');
-    this.node.setAttribute('aria-label', 'Теги');
+    this.node.setAttribute('aria-label', 'Tags');
     this.chips = el(this.node, 'div', 'pb-tag-chips');
     this.input = el(this.node, 'input', 'pb-tags-input');
     this.input.type = 'text';
-    this.input.placeholder = '#тег';
-    this.input.setAttribute('aria-label', 'Новый тег');
+    this.input.placeholder = '#tag';
+    this.input.setAttribute('aria-label', 'New tag');
     this.input.autocomplete = 'off';
     this.input.spellcheck = false;
     this.input.value = options.draft?.tagInput || '';
@@ -6338,7 +6344,7 @@ class TagEditor {
     for (const tag of visible) {
       const chip = el(this.chips, 'span', 'pb-tag-chip');
       el(chip, 'span', 'pb-tag-label', '#' + tag);
-      const remove = icon(chip, 'x', 'Убрать тег #' + tag, () => {
+      const remove = icon(chip, 'x', 'Remove tag #' + tag, () => {
         this.operations.push({ remove: tag });
         this.render();
         this.drain().catch(this.options.fail);
@@ -6408,7 +6414,7 @@ class TemplatePicker extends FuzzySuggestModal {
   constructor(app, items, resolve) {
     super(app);
     Object.assign(this, { items, resolve });
-    this.setPlaceholder('Выбрать шаблон');
+    this.setPlaceholder('Choose template');
   }
   getItems() { return this.items; }
   getItemText(item) { return item.label; }
@@ -6421,7 +6427,7 @@ class TemplatePicker extends FuzzySuggestModal {
 }
 async function pickTemplate(plugin) {
   const items = await plugin.templates.list();
-  items.push({ label: '+ Новый шаблон', create: true });
+  items.push({ label: '+ New template', create: true });
   return new Promise((resolve) => new TemplatePicker(plugin.app, items, resolve).open());
 }
 module.exports = { TemplatePicker, pickTemplate };

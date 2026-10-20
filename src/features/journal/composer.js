@@ -12,29 +12,29 @@ class JournalComposer {
     this.disposed = false;
     this.form = el(parent, 'form', 'pb-journal-composer');
     const modes = el(this.form, 'div', 'pb-composer-modes');
-    this.noteButton = button(modes, 'Запись', () => this.setMode('note'), 'pb-composer-mode');
+    this.noteButton = button(modes, 'Entry', () => this.setMode('note'), 'pb-composer-mode');
     this.nextButton = button(
       modes,
-      'Следующий шаг',
+      'Next step',
       () => this.setMode('next'),
       'pb-composer-mode',
     );
     this.input = el(this.form, 'textarea', 'pb-comment-input');
     this.input.rows = 1;
     const actions = el(this.form, 'div', 'pb-composer-actions');
-    this.attach = icon(actions, 'paperclip', 'Прикрепить к записи', (e) => this.attachMenu(e));
+    this.attach = icon(actions, 'paperclip', 'Attach to entry', (e) => this.attachMenu(e));
     this.attach.classList.add('pb-attach');
     this.checklist = button(actions, '', () => this.addChecklist(), 'pb-compose-checklist');
     setIcon(el(this.checklist, 'span', 'pb-menu-icon'), 'list-checks');
-    el(this.checklist, 'span', '', 'Чеклист');
-    this.checklist.setAttribute('aria-label', 'Добавить пункт чеклиста');
-    this.send = icon(actions, 'arrow-up', 'Записать', () => this.form.requestSubmit());
+    el(this.checklist, 'span', '', 'Checklist');
+    this.checklist.setAttribute('aria-label', 'Add checklist item');
+    this.send = icon(actions, 'arrow-up', 'Post entry', () => this.form.requestSubmit());
     this.send.classList.add('pb-send');
     this.error = el(this.form, 'div', 'pb-compose-error');
     this.error.setAttribute('role', 'status');
     this.rebase = button(
       this.form,
-      'Сверить с текущим шагом',
+      'Compare with current step',
       () => this.model.rebaseNext().catch((e) => this.model.fail(e)),
       'pb-rebase',
     );
@@ -103,8 +103,8 @@ class JournalComposer {
     const isNext = this.mode === 'next',
       value = isNext ? (this.model.nextDraft ?? this.model.next) : this.model.update;
     if (this.input.value !== value) this.input.value = value;
-    this.input.placeholder = isNext ? 'Что сделать дальше?' : 'Что изменилось?';
-    this.input.setAttribute('aria-label', isNext ? 'Следующий шаг' : 'Комментарий');
+    this.input.placeholder = isNext ? 'What is next?' : 'What changed?';
+    this.input.setAttribute('aria-label', isNext ? 'Next step' : 'Comment');
     this.noteButton.classList.toggle('is-active', !isNext);
     this.nextButton.classList.toggle('is-active', isNext);
     this.noteButton.setAttribute('aria-pressed', String(!isNext));
@@ -119,11 +119,11 @@ class JournalComposer {
           this.model.nextDraft === undefined ||
           this.model.nextDraft.trim() === (this.model.nextBase || '')
         : !value.trim());
-    this.send.setAttribute('aria-label', isNext ? 'Сохранить шаг' : 'Записать');
+    this.send.setAttribute('aria-label', isNext ? 'Save step' : 'Post entry');
     this.send.classList.toggle('pb-save-step', isNext);
     if (this.sendMode !== this.mode) {
       this.sendMode = this.mode;
-      if (isNext) this.send.textContent = 'Сохранить шаг';
+      if (isNext) this.send.textContent = 'Save step';
       else {
         this.send.textContent = '';
         setIcon(this.send, 'arrow-up');
@@ -131,7 +131,7 @@ class JournalComposer {
     }
     this.attach.setAttribute(
       'aria-label',
-      isNext ? 'Прикрепить к следующему шагу' : 'Прикрепить к записи',
+      isNext ? 'Attach to next step' : 'Attach to entry',
     );
     this.error.textContent = this.model.error;
     this.error.hidden = !this.model.error;
@@ -168,7 +168,7 @@ class JournalComposer {
       menu = new Menu();
     menu.addItem((i) =>
       i
-        .setTitle('Заметка или исследование')
+        .setTitle('Note or research')
         .setIcon('file-text')
         .onClick(() =>
           this.plugin.chooseNote(this.file, (target) => this.appendLink(target, mode)),
@@ -176,7 +176,7 @@ class JournalComposer {
     );
     menu.addItem((i) =>
       i
-        .setTitle('Файл')
+        .setTitle('File')
         .setIcon('paperclip')
         .onClick(() =>
           this.plugin

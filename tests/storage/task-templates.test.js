@@ -70,7 +70,7 @@ test('missing or unmarked templates fail before task creation; root folder does 
   f.disk.set('Ordinary.md', yaml({ tags: ['task'] }, 'Task'));
   f.disk.set('Template.md', yaml({ 'pikoboard-template': true }, 'Template'));
   assert.equal((await f.store.list()).length, 1);
-  await assert.rejects(f.store.read(f.file('Ordinary.md')), /шаблоном/);
+  await assert.rejects(f.store.read(f.file('Ordinary.md')), /template/);
   await assert.rejects(f.store.read(f.file('Missing.md')), /missing/);
 });
 

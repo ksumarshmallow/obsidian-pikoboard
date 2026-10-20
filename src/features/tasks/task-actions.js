@@ -3,9 +3,9 @@ const C = require('../../domain/tasks.js');
 const { equal } = require('../../storage/task-change.js');
 
 function labelFor(patch) {
-  if ('archived' in patch) return patch.archived ? 'Задача в архиве' : 'Задача возвращена';
-  if ('board' in patch || 'status' in patch) return 'Карточка перемещена';
-  return 'Поля задачи изменены';
+  if ('archived' in patch) return patch.archived ? 'Task archived' : 'Task restored';
+  if ('board' in patch || 'status' in patch) return 'Card moved';
+  return 'Task properties updated';
 }
 
 // One undoable action per session. A drag changes status and order as one action.
@@ -30,7 +30,7 @@ class TaskActions {
   patch(file, patch) {
     return this.run(file, async () => {
       const current = await this.plugin.store.get(file.path);
-      if (!current) throw new Error('Задача не найдена');
+      if (!current) throw new Error('Task not found');
       if (typeof patch === 'function') patch = patch(current);
       const receipt = {};
       try {
@@ -53,7 +53,7 @@ class TaskActions {
   move(file, status, anchor, after) {
     return this.run(file, async () => {
       const task = await this.plugin.store.get(file.path);
-      if (!task) throw new Error('Задача не найдена');
+      if (!task) throw new Error('Task not found');
       const before = await this.order();
       const next = C.moveTaskOrder(before, file.path, anchor, after);
       const receipt = {};
@@ -68,7 +68,7 @@ class TaskActions {
           order = { before: files(before), after: files(next) };
         }
       } finally {
-        this.remember({ file, change: receipt.change, order, label: 'Карточка перемещена', title: task.title });
+        this.remember({ file, change: receipt.change, order, label: 'Card moved', title: task.title });
         this.plugin.refresh();
       }
     });
@@ -80,14 +80,14 @@ class TaskActions {
       const { file, change, order } = expected;
       const vault = this.plugin.app.vault;
       if (vault.getAbstractFileByPath(file.path) !== file)
-        throw new Error('Задача удалена или заменена. Отмена недоступна.');
+        throw new Error('The task was deleted or replaced. Undo is unavailable.');
       const current = await this.order();
       let restored = current;
       if (order) {
         const surviving = (files) => files.filter((f) => vault.getAbstractFileByPath(f.path) === f && current.includes(f.path)).map((f) => f.path);
         const after = surviving(order.after);
         if (!equal(current.filter((p) => after.includes(p)), after))
-          throw new Error('Порядок карточек уже изменился. Отмена недоступна.');
+          throw new Error('Card order changed. Undo is unavailable.');
         const before = surviving(order.before), index = before.indexOf(file.path);
         const next = before[index + 1], previous = before[index - 1];
         restored = C.moveTaskOrder(current, file.path, next || previous, !next && !!previous);
@@ -103,7 +103,7 @@ class TaskActions {
             // The position was restored, but its rollback could not be saved.
             // Keep the remaining field change retryable instead of replaying order.
             expected.order = undefined;
-            throw new Error('Позиция возвращена, но поля не сохранены. Повторите отмену.');
+            throw new Error('Position restored, but properties were not saved. Try undo again.');
           }
         }
         throw error;

@@ -9,7 +9,7 @@ const update = (
   text = '**Compared** [options](https://example.test)\n\n[[Materials/Research]]\n![[Attachments/plan.png]]',
   kind,
 ) => ({ id, at: '2026-10-18T12:00:00Z', text, ...(kind ? { kind } : {}) });
-const nextSection = (text) => `${C.NEXT_START}\n## Следующий шаг\n${text}\n${C.NEXT_END}`;
+const nextSection = (text) => `${C.NEXT_START}\n## Next step\n${text}\n${C.NEXT_END}`;
 
 test('legacy comments keep their shape while done entries carry an explicit kind', () => {
   const legacy = update(),
@@ -283,4 +283,26 @@ test('Enter continues checklists, exits empty items, and leaves plain text and c
   assert.equal(C.continueChecklist(step, 0), null);
   assert.equal(C.continueChecklist('Text', 4), null);
   assert.equal(C.continueChecklist('```\n- [ ] Example\n```', 17), null);
+});
+
+
+test('English section headings preserve existing Russian notes when editing', () => {
+  const english = C.appendUpdate(C.setNextAction(source, '', 'Сравнить варианты'), update());
+  assert.match(english, /## Next step/);
+  assert.match(english, /## History/);
+  for (const eol of ['\n', '\r\n']) {
+    const original = english.replace('## Next step', '## Следующий шаг').replace('## History', '## Обновления').replace(/\n/g, eol);
+    const before = C.readNote(original);
+    assert.equal(before.nextAction, 'Сравнить варианты');
+    const appended = C.appendUpdate(original, update('new', 'Новое наблюдение'));
+    const after = C.readNote(appended);
+    assert.equal(after.updates.length, 2);
+    assert.equal(after.nextSection, before.nextSection);
+    assert.equal(after.body, before.body);
+    assert.equal(after.updates[0].text, 'Новое наблюдение');
+    const changed = C.setNextAction(appended, before.nextAction, 'Выбрать вариант');
+    assert.equal(C.readNote(changed).nextAction, 'Выбрать вариант');
+    assert.equal(C.readNote(changed).updates.length, 2);
+    assert.equal(C.readNote(C.editUpdate(changed, 'new', 'Изменено')).updates.find(x => x.id === 'new').text, 'Изменено');
+  }
 });

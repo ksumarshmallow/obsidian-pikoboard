@@ -31,11 +31,11 @@ class SavedFilters {
     const snapshot = normalizeFilters(filters);
     return this.change((records) => {
       const label = String(name || '').trim();
-      if (!label || label.length > 80) throw new Error('Название подборки – от 1 до 80 символов.');
+      if (!label || label.length > 80) throw new Error('Use 1–80 characters for the filter name.');
       if (records.some((x) => x.scope === scope && x.id !== id && x.name.toLocaleLowerCase() === label.toLocaleLowerCase()))
-        throw new Error('Подборка с таким названием уже есть.');
+        throw new Error('A saved filter with this name already exists.');
       if (id && !records.some((x) => x.id === id && x.scope === scope))
-        throw new Error('Подборка уже удалена.');
+        throw new Error('This saved filter was deleted.');
       const entry = { id: id || crypto.randomUUID(), scope, name: label, filters: snapshot, archive: !!archive };
       return id ? records.map((x) => x.id === id && x.scope === scope ? entry : x) : [...records, entry];
     });

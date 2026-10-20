@@ -42,7 +42,7 @@ class TaskTemplates {
   async read(file) {
     const source = await this.plugin.app.vault.read(file);
     if (splitDocument(source, this.parseYaml).data[MARKER] !== true)
-      throw new Error('Этот файл больше не является шаблоном');
+      throw new Error('This file is no longer a template');
     return templateContent(source, this.parseYaml, this.plugin.store.systemTags());
   }
   save(name, file) {

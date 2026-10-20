@@ -229,7 +229,7 @@ test('external next-step conflict keeps the user draft and external value intact
   await model.submit('next');
   assert.equal(note().nextAction, 'External step');
   assert.equal(model.nextDraft, 'My step');
-  assert.match(model.error, /изменён/);
+  assert.match(model.error, /changed/);
   assert.equal(model.busy, false);
 });
 test('a delayed next-step read cannot override a newer composer mode selection', async () => {
@@ -270,7 +270,7 @@ test('explicit next-step rebase preserves the draft and permits saving against t
   model.setText('next', 'My replacement');
   await plugin.setNext({}, 'Old step', 'External replacement');
   await model.submit('next');
-  assert.match(model.error, /изменён/);
+  assert.match(model.error, /changed/);
   await model.rebaseNext();
   assert.equal(model.next, 'External replacement');
   assert.equal(model.nextDraft, 'My replacement');
@@ -373,7 +373,7 @@ test('opening next-step editing preserves a nonempty pending draft and still det
   assert.equal(state.model.nextBase, 'Old action');
   await state.model.submit('next');
   assert.equal(state.note().nextAction, 'Saved action');
-  assert.match(state.model.error, /изменён/);
+  assert.match(state.model.error, /changed/);
 });
 test('empty next-step submission cannot remove a saved step accidentally', async () => {
   const state = setup('Keep pinned');

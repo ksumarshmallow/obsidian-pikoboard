@@ -25,7 +25,7 @@ test('missing and invalid dates stay neutral without normalizing impossible date
     assert.equal(dueState(task(due)), '', String(due));
   }
   assert.equal(duePresentation(task('2026-02-30')).text, '2026-02-30');
-  assert.equal(duePresentation(task()).text, 'Срок');
+  assert.equal(duePresentation(task()).text, 'Due date');
 });
 
 test('completed and archived tasks remain neutral, including custom completed statuses', () => {
@@ -39,11 +39,11 @@ test('completed and archived tasks remain neutral, including custom completed st
 test('today has a short label and all urgency states have descriptive accessible text', () => {
   const now = new Date(2026, 9, 20);
   const today = duePresentation(task('2026-10-20'), now);
-  assert.equal(today.text, 'Сегодня');
-  assert.match(today.label, /^Сегодня · 20 окт/);
-  assert.match(duePresentation(task('2026-10-19'), now).label, /^Просрочено · 19 окт/);
-  assert.match(duePresentation(task('2026-10-23'), now).label, /^Скоро · 23 окт/);
-  assert.match(duePresentation(task('2026-10-20', { status: 'done' }), now).label, /^Срок · 20 окт/);
+  assert.equal(today.text, 'Today');
+  assert.match(today.label, /^Today · 20 Oct/);
+  assert.match(duePresentation(task('2026-10-19'), now).label, /^Overdue · 19 Oct/);
+  assert.match(duePresentation(task('2026-10-23'), now).label, /^Due soon · 23 Oct/);
+  assert.match(duePresentation(task('2026-10-20', { status: 'done' }), now).label, /^Due date · 20 Oct/);
   assert.match(duePresentation(task('2025-12-31'), now).text, /2025/);
 });
 
@@ -63,7 +63,7 @@ test('local dates and timestamp labels agree in different time zones and across 
       const midnight = new Date(2026, 9, 20, 0, 30);
       const sameDay = new Date(2026, 9, 20, 23, 30).toISOString();
       assert.equal(state(sameDay, midnight), 'today');
-      assert.match(duePresentation({ due: sameDay }, midnight).label, /20 окт/);
+      assert.match(duePresentation({ due: sameDay }, midnight).label, /20 Oct/);
       assert.equal(state('2026-10-20', midnight), 'today');
     `;
     // The host's timezone is irrelevant to these checks.

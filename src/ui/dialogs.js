@@ -25,7 +25,7 @@ class AskModal extends Modal {
     input.placeholder = this.placeholder;
     input.setAttribute('aria-label', this.heading);
     input.required = !this.allowEmpty;
-    const send = icon(form, 'arrow-right', 'Подтвердить', () => form.requestSubmit());
+    const send = icon(form, 'arrow-right', 'Confirm', () => form.requestSubmit());
     form.onsubmit = async (e) => {
       e.preventDefault();
       if (this.busy || (!input.value.trim() && !this.allowEmpty)) return;
@@ -53,14 +53,14 @@ class DeleteConfirmModal extends Modal {
   onOpen() {
     this.modalEl.addClass('pb-delete-modal');
     this.contentEl.addClass('pikoboard');
-    el(this.contentEl, 'h3', '', 'Удалить задачу?');
+    el(this.contentEl, 'h3', '', 'Delete task?');
     el(this.contentEl, 'p', 'pb-delete-name', this.taskTitle);
-    el(this.contentEl, 'p', 'pb-delete-hint', 'Файл будет удалён способом, выбранным в настройках Obsidian.');
+    el(this.contentEl, 'p', 'pb-delete-hint', 'The file will be deleted using your Obsidian deletion preference.');
     const actions = el(this.contentEl, 'div', 'pb-delete-actions');
-    const cancel = button(actions, 'Отмена', () => this.close());
+    const cancel = button(actions, 'Cancel', () => this.close());
     button(
       actions,
-      'Удалить',
+      'Delete',
       () => {
         this.confirmed = true;
         this.close();
@@ -86,7 +86,7 @@ class ConfirmMessageModal extends Modal {
     el(this.contentEl, 'h3', '', this.heading);
     el(this.contentEl, 'p', 'pb-delete-name', this.text);
     const actions = el(this.contentEl, 'div', 'pb-delete-actions');
-    const cancel = button(actions, 'Отмена', () => this.close());
+    const cancel = button(actions, 'Cancel', () => this.close());
     button(
       actions,
       this.label,
@@ -110,15 +110,15 @@ class EditMessageModal extends Modal {
   onOpen() {
     this.modalEl.addClass('pb-message-editor');
     this.contentEl.addClass('pikoboard');
-    el(this.contentEl, 'h3', '', 'Изменить запись');
+    el(this.contentEl, 'h3', '', 'Edit entry');
     const input = el(this.contentEl, 'textarea', 'pb-message-edit-input');
     input.value = this.update.text;
-    input.setAttribute('aria-label', 'Текст записи');
+    input.setAttribute('aria-label', 'Entry text');
     const actions = el(this.contentEl, 'div', 'pb-delete-actions');
-    button(actions, 'Отмена', () => this.close());
+    button(actions, 'Cancel', () => this.close());
     const save = button(
       actions,
-      'Сохранить',
+      'Save',
       async () => {
         if (this.busy || !input.value.trim()) return;
         this.busy = true;

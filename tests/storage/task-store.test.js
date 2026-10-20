@@ -91,7 +91,7 @@ function fixture(options = {}) {
 test('standalone store creates tasks with no plugin manager, default empty project and due', async () => {
   const f = fixture();
   const task = await f.store.tasks.create({ title: 'New task', status: 'open' });
-  assert.equal(task.path, 'Задачи/New task.md');
+  assert.equal(task.path, 'Tasks/New task.md');
   assert.deepEqual(task.projects, []);
   assert.equal(task.due, undefined);
   assert.deepEqual(task.tags, ['task']);
@@ -266,8 +266,8 @@ test('non-task notes and missing files cannot be accidentally updated', async ()
   f.add('Note.md', { title: 'Ordinary note' });
   const before = f.disk.get('Note.md');
   assert.equal(await f.store.tasks.get('Missing.md'), null);
-  await assert.rejects(f.store.tasks.update('Note.md', { status: 'done' }), /не найдена/);
-  await assert.rejects(f.store.tasks.update('Missing.md', { title: 'Oops' }), /не найдена/);
+  await assert.rejects(f.store.tasks.update('Note.md', { status: 'done' }), /not found/);
+  await assert.rejects(f.store.tasks.update('Missing.md', { title: 'Oops' }), /not found/);
   assert.equal(f.disk.get('Note.md'), before);
 });
 test('explicit property-based identity and custom fields work independently', async () => {
@@ -416,7 +416,7 @@ test('create rejects missing board identities, foreign statuses and unsafe folde
     f.store.tasks.create({ title: 'No file', status: 'queue', board: 'unsafe' }),
   );
   assert.equal(f.disk.size, 0);
-  assert.equal(f.vault.getAbstractFileByPath('Задачи'), undefined);
+  assert.equal(f.vault.getAbstractFileByPath('Tasks'), undefined);
 });
 test('moving a task validates the destination status atomically and preserves content', async () => {
   const f = fixture({
@@ -542,9 +542,9 @@ test('automatic archive rereads a concurrent board move and does not double-coun
 });
 test('all configurable storage folders use the same vault-relative validation', () => {
   const defaults = settingsFrom();
-  assert.equal(defaults.attachmentsFolder, 'Вложения');
-  assert.equal(defaults.materialsFolder, 'Материалы');
-  assert.equal(defaults.projectsFolder, 'Проекты');
+  assert.equal(defaults.attachmentsFolder, 'Attachments');
+  assert.equal(defaults.materialsFolder, 'Materials');
+  assert.equal(defaults.projectsFolder, 'Projects');
   assert.equal(defaults.boardsFolder, '');
   for (const key of [
     'tasksFolder',

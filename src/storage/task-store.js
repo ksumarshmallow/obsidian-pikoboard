@@ -14,10 +14,10 @@ const FIELDS = {
 };
 const DEFAULT_SETTINGS = {
   appearance: 'obsidian',
-  tasksFolder: 'Задачи',
-  attachmentsFolder: 'Вложения',
-  materialsFolder: 'Материалы',
-  projectsFolder: 'Проекты',
+  tasksFolder: 'Tasks',
+  attachmentsFolder: 'Attachments',
+  materialsFolder: 'Materials',
+  projectsFolder: 'Projects',
   boardsFolder: '',
   templatesFolder: 'Templates/PikoBoard',
   taskTag: 'task',
@@ -96,12 +96,12 @@ function splitDocument(text, parseYaml) {
   const match = text.match(/^(\uFEFF?)---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
   if (!match) {
     if (/^\uFEFF?---(?:\r?\n|$)/.test(text))
-      throw new Error('Некорректные свойства заметки. Файл не изменён.');
+      throw new Error('Invalid note properties. The file was not changed.');
     return { data: {}, body: text, bom: '' };
   }
   const data = parseYaml(match[2]) ?? {};
   if (typeof data !== 'object' || Array.isArray(data))
-    throw new Error('Некорректные свойства заметки. Файл не изменён.');
+    throw new Error('Invalid note properties. The file was not changed.');
   return { data, body: text.slice(match[0].length), bom: match[1] };
 }
 function dateValue(value) {
@@ -165,9 +165,9 @@ class TaskStore {
   }
   boardForWrite(value) {
     if (value == null || value === '') return { id: '', config: null };
-    if (typeof value !== 'string' || value !== value.trim()) throw new Error('Некорректная доска');
+    if (typeof value !== 'string' || value !== value.trim()) throw new Error('Invalid board');
     const board = this.getBoard(value);
-    if (!board || board.id !== value) throw new Error('Доска не найдена');
+    if (!board || board.id !== value) throw new Error('Board not found');
     return { id: value, config: board };
   }
   validateStatus(status, boardId) {
@@ -175,7 +175,7 @@ class TaskStore {
       !this.statuses(boardId).some((item) => item.value === status) &&
       (boardId || !this.config.completedStatuses.includes(status))
     )
-      throw new Error('Неизвестный статус');
+      throw new Error('Unknown status');
   }
   systemTags() {
     const s = this.config;
@@ -247,7 +247,7 @@ class TaskStore {
     const s = this.config,
       f = s.fieldMapping,
       title = String(input.title || '').trim();
-    if (!title) throw new Error('Введите название задачи');
+    if (!title) throw new Error('Enter a task title');
     const board = this.boardForWrite(input.board);
     this.validateStatus(input.status, board.id);
     const tasksFolder = folderPath(board.config?.tasksFolder ?? s.tasksFolder);
@@ -255,7 +255,7 @@ class TaskStore {
     for (const name of tasksFolder.split('/').filter(Boolean)) {
       folder = folder ? folder + '/' + name : name;
       const existing = this.app.vault.getAbstractFileByPath(folder);
-      if (existing?.extension) throw new Error('Путь к папке занят файлом');
+      if (existing?.extension) throw new Error('A file already occupies this folder path');
       if (!existing) await this.app.vault.createFolder(folder);
     }
     const safe =
@@ -263,7 +263,7 @@ class TaskStore {
         .replace(/[\\/:*?"<>|\[\]#^]/g, ' ')
         .trim()
         .replace(/^\.+|\.+$/g, '')
-        .slice(0, 140) || 'Задача';
+        .slice(0, 140) || 'Task';
     const now = this.now().toISOString();
     const data = {
       [f.title]: title,
@@ -296,7 +296,7 @@ class TaskStore {
   }
   async update(path, patch, guard, receipt) {
     const file = this.app.vault.getAbstractFileByPath(path);
-    if (!file || file.extension !== 'md') throw new Error('Задача не найдена');
+    if (!file || file.extension !== 'md') throw new Error('Task not found');
     const s = this.config,
       f = s.fieldMapping;
     let result, change,
@@ -304,7 +304,7 @@ class TaskStore {
     await this.app.vault.process(file, (source) => {
       const { data, body, bom } = splitDocument(source, this.parseYaml);
       const before = this.fromData(file, data);
-      if (!before) throw new Error('Задача не найдена');
+      if (!before) throw new Error('Task not found');
       if (guard && !guard(before)) {
         result = before;
         return source;
@@ -327,7 +327,7 @@ class TaskStore {
       }
       if ('title' in patch) {
         if (typeof patch.title !== 'string' || !patch.title.trim())
-          throw new Error('Введите название задачи');
+          throw new Error('Enter a task title');
         data[f.title] = patch.title.trim();
       }
       if ('due' in patch) {
@@ -373,21 +373,21 @@ class TaskStore {
   }
   async undoChange(file, change) {
     if (this.app.vault.getAbstractFileByPath(file.path) !== file)
-      throw new Error('Задача удалена или заменена. Отмена недоступна.');
+      throw new Error('The task was deleted or replaced. Undo is unavailable.');
     const f = this.config.fieldMapping;
     if (JSON.stringify(f) !== change.mapping)
-      throw new Error('Настройки свойств изменились. Отмена недоступна.');
+      throw new Error('Property settings changed. Undo is unavailable.');
     let result;
     await this.app.vault.process(file, (source) => {
       const { data, body, bom } = splitDocument(source, this.parseYaml);
       const current = this.fromData(file, data);
-      if (!current) throw new Error('Задача не найдена');
+      if (!current) throw new Error('Task not found');
       const restored = restoreFields(data, change.fields);
       const structural = change.fields.some(({ key }) =>
         [f.status, 'board', f.completedDate].includes(key));
       if (structural) {
         if (current.board !== change.board || current.status !== change.status)
-          throw new Error('Статус или доска уже изменились. Отмена недоступна.');
+          throw new Error('The status or board changed. Undo is unavailable.');
         const target = this.fromData(file, restored);
         this.boardForWrite(target.board);
         this.validateStatus(target.status, target.board);

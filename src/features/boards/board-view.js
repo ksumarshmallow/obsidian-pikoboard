@@ -34,7 +34,7 @@ const BoardBase = (Base) =>
       return TYPE;
     }
     getDisplayText() {
-      return this.file?.basename || 'Все задачи';
+      return this.file?.basename || 'All tasks';
     }
     getIcon() {
       return 'columns-3';
@@ -124,8 +124,8 @@ const BoardBase = (Base) =>
       col.createInput = input;
       input.rows = 1;
       input.placeholder =
-        'Новая задача · ' + (this.boardColumns().find((s) => s.value === status)?.label || status);
-      input.setAttribute('aria-label', 'Новая задача');
+        'New task · ' + (this.boardColumns().find((s) => s.value === status)?.label || status);
+      input.setAttribute('aria-label', 'New task');
       const add = col.col.querySelector('.pb-add-task');
       add.hidden = true;
       const hide = () => {
@@ -137,7 +137,7 @@ const BoardBase = (Base) =>
         setTimeout(() => {
           if (!row.contains(document.activeElement) && !input.value.trim() && !row._busy && !row._picking) hide();
         }, 0);
-      const send = icon(entry, 'arrow-up', 'Создать задачу', () => row.requestSubmit());
+      const send = icon(entry, 'arrow-up', 'Create task', () => row.requestSubmit());
       send.classList.add('pb-create-send');
       send.hidden = true;
       const tools = el(row, 'div', 'pb-create-tools');
@@ -154,7 +154,7 @@ const BoardBase = (Base) =>
           if (selected) {
             row._template = selected.file;
             templateLabel.textContent = selected.label;
-            template.setAttribute('aria-label', 'Шаблон ' + selected.label);
+            template.setAttribute('aria-label', 'Template ' + selected.label);
             clearTemplate.hidden = false;
           }
           input.focus();
@@ -164,12 +164,12 @@ const BoardBase = (Base) =>
         } finally { row._picking = false; }
       }, 'pb-template-choice');
       setIcon(el(template, 'span'), 'copy-plus');
-      const templateLabel = el(template, 'span', '', 'Шаблон');
-      template.setAttribute('aria-label', 'Выбрать шаблон');
-      const clearTemplate = icon(tools, 'x', 'Убрать шаблон', () => {
+      const templateLabel = el(template, 'span', '', 'Template');
+      template.setAttribute('aria-label', 'Choose template');
+      const clearTemplate = icon(tools, 'x', 'Remove template', () => {
         row._template = null;
-        templateLabel.textContent = 'Шаблон';
-        template.setAttribute('aria-label', 'Выбрать шаблон');
+        templateLabel.textContent = 'Template';
+        template.setAttribute('aria-label', 'Choose template');
         clearTemplate.hidden = true;
         input.focus();
       });
@@ -270,7 +270,7 @@ const BoardBase = (Base) =>
       return [
         ...this.boardColumns(),
         ...((this.allTasks || []).some((t) => this.columnForTask(t) === '__unknown__')
-          ? [{ value: '__unknown__', label: 'Без столбца', color: '#858594', opacity: 0.05, icon: 'circle-help' }]
+          ? [{ value: '__unknown__', label: 'No column', color: '#858594', opacity: 0.05, icon: 'circle-help' }]
           : []),
       ];
     }
@@ -369,7 +369,7 @@ const BoardBase = (Base) =>
           if (inColumn && (matches || (!focus && this.recent.has(task.path)))) visible.push(task);
         }
       } catch (e) {
-        if (seq === this.seq) this.filterBar.showResult(0, scope.length, 'Не удалось выполнить поиск. Попробуйте ещё раз.');
+        if (seq === this.seq) this.filterBar.showResult(0, scope.length, 'Search failed. Try again.');
         console.error(e);
         return;
       }
@@ -392,7 +392,7 @@ const BoardBase = (Base) =>
       if (!this.columns) {
         this.columns = new Map();
         const columns = this.archive
-          ? [{ value: 'archive', label: 'Архив', color: '#858594', opacity: 0.05 }]
+          ? [{ value: 'archive', label: 'Archive', color: '#858594', opacity: 0.05 }]
           : shownColumns;
         const editable = this.boardConfig && !this.archive;
         this.area.style.gridTemplateColumns = `repeat(${columns.length}, minmax(min(260px, 85vw), 1fr))${editable ? ' 44px' : ''}`;
@@ -415,10 +415,10 @@ const BoardBase = (Base) =>
               new BoardSettingsModal(this.plugin, this.file, s.value).open(),
             );
           if (!this.archive && s.value !== '__unknown__')
-            button(col, '+ Задача', () => this.plugin.createTask(s.value, this), 'pb-add-task');
+            button(col, '+ Task', () => this.plugin.createTask(s.value, this), 'pb-add-task');
         }
         if (editable) {
-          const add = icon(this.area, 'plus', 'Добавить столбец', () =>
+          const add = icon(this.area, 'plus', 'Add column', () =>
             new AddColumnModal(this.plugin, this.file).open(),
           );
           add.classList.add('pb-add-column');
@@ -480,27 +480,30 @@ const BoardBase = (Base) =>
         'pb-board-title',
       );
       const nav = el(this.toolbar, 'div', 'pb-nav');
+      nav.setAttribute('aria-label', 'Task views');
       for (const [mode, label] of [
-        ['board', 'Все'],
-        [
-          'focus',
-          'В работе · ' + active.filter((t) => t.isActive ?? t.status === 'in-progress').length,
-        ],
-        ['archive', 'Архив'],
+        ['board', 'All tasks'],
+        ['focus', 'In progress'],
+        ['archive', 'Archive'],
       ]) {
         const selected = mode === 'archive' ? this.archive : !this.archive && this.mode === mode;
         const b = button(nav, label, () => this.switchMode(mode), selected ? 'is-active' : '');
         b.setAttribute('aria-pressed', String(selected));
+        if (mode === 'focus') {
+          const count = active.filter((t) => t.isActive ?? t.status === 'in-progress').length;
+          el(b, 'span', 'pb-nav-count', String(count)).setAttribute('aria-hidden', 'true');
+          b.setAttribute('aria-label', `${label}, ${count} ${count === 1 ? 'task' : 'tasks'}`);
+        }
       }
       const undoAction = this.plugin.actions?.last;
       const undoButton = icon(this.toolbar, 'undo-2',
-        undoAction ? 'Отменить · ' + undoAction.title : 'Нет действия для отмены',
+        undoAction ? 'Undo · ' + undoAction.title : 'Nothing to undo',
         () => this.plugin.undoTaskAction(undoAction));
       undoButton.classList.add('pb-task-undo');
       undoButton.disabled = !undoAction;
       button(
         this.toolbar,
-        '+ Задача',
+        '+ Task',
         () =>
           this.plugin.createTask(
             (focus ? this.boardColumns().find((s) => s.kind === 'active') : this.visibleColumns().find((s) => s.value !== '__unknown__'))
@@ -509,7 +512,7 @@ const BoardBase = (Base) =>
           ),
         'pb-new',
       );
-      const optionsButton = icon(this.toolbar, 'ellipsis', 'Меню доски', () =>
+      const optionsButton = icon(this.toolbar, 'ellipsis', 'Board menu', () =>
         actionMenu(
           optionsButton,
           [
@@ -526,16 +529,16 @@ const BoardBase = (Base) =>
                     action: () => new BoardStorageModal(this.plugin, this.file).open(),
                   },
                   {
-                    label: 'Добавить существующую задачу',
+                    label: 'Add existing task',
                     icon: 'list-plus',
                     action: () => this.plugin.addExisting(this),
                   },
                 ]
               : []),
-            { label: 'Создать доску', icon: 'plus', action: () => this.plugin.newBoard() },
-            { label: 'Все задачи', icon: 'panels-top-left', action: () => this.plugin.openBoard() },
+            { label: 'Create board', icon: 'plus', action: () => this.plugin.newBoard() },
+            { label: 'All tasks', icon: 'panels-top-left', action: () => this.plugin.openBoard() },
           ],
-          'Меню доски',
+          'Board menu',
           this.app,
         ),
       );
@@ -550,7 +553,7 @@ const BoardBase = (Base) =>
       const choices = [
         {
           value: '',
-          label: focus ? 'Все домены' : 'Все',
+          label: focus ? 'All projects' : 'All',
           count: focus
             ? active.filter((t) => t.isActive ?? t.status === 'in-progress').length
             : scope.length,
@@ -562,7 +565,7 @@ const BoardBase = (Base) =>
         })),
         {
           value: '__none__',
-          label: 'Без проекта',
+          label: 'No project',
           count: scope.filter((t) => !t.projects.length).length,
         },
       ];
@@ -604,7 +607,7 @@ const BoardBase = (Base) =>
         () => new TaskModal(this.plugin, file).open(),
         'pb-task-title',
       );
-      c.toggle = icon(head, 'chevron-down', 'Подробности задачи', async () => {
+      c.toggle = icon(head, 'chevron-down', 'Task details', async () => {
         const open = !this.expanded.has(file.path);
         if (open) this.expanded.add(file.path);
         else this.expanded.delete(file.path);
@@ -693,19 +696,19 @@ const BoardBase = (Base) =>
           );
         menu.addSeparator();
         menu.addItem((i) =>
-          i.setTitle(c.task.archived ? 'Вернуть' : 'В архив').onClick(() => this.archiveTask(c)),
+          i.setTitle(c.task.archived ? 'Restore' : 'Archive').onClick(() => this.archiveTask(c)),
         );
         menu.addItem((i) =>
           i
-            .setTitle('Перенести на доску')
+            .setTitle('Move to board')
             .setIcon('columns-3')
             .onClick(() => this.plugin.chooseTaskBoard(file)),
         );
-        menu.addItem((i) => i.setTitle('Открыть файл').onClick(() => this.plugin.openFile(file)));
+        menu.addItem((i) => i.setTitle('Open file').onClick(() => this.plugin.openFile(file)));
         menu.addSeparator();
         menu.addItem((i) =>
           i
-            .setTitle('Удалить задачу')
+            .setTitle('Delete task')
             .setIcon('trash-2')
             .onClick(() =>
               this.plugin.requestTrash(file).catch((err) => new Notice(errorMessage(err))),
@@ -714,7 +717,7 @@ const BoardBase = (Base) =>
         menu.showAtMouseEvent(e);
       };
       c.meta = el(node, 'div', 'pb-meta');
-      if (this.archive) button(node, 'Вернуть', () => this.archiveTask(c), 'pb-restore');
+      if (this.archive) button(node, 'Restore', () => this.archiveTask(c), 'pb-restore');
       c.journal = el(node, 'div', 'pb-card-journal');
       c.journal.hidden = !this.expanded.has(file.path);
       c.nextWrap = nextStep(c.journal, this.plugin, file, async () => {
@@ -726,7 +729,7 @@ const BoardBase = (Base) =>
       });
       c.feed = el(c.journal, 'div', 'pb-feed');
       c.feed.setAttribute('role', 'region');
-      c.feed.setAttribute('aria-label', 'История задачи');
+      c.feed.setAttribute('aria-label', 'Task history');
       c.composer = new JournalComposer(this.plugin, file, c.journal);
       return c;
     }
@@ -735,7 +738,7 @@ const BoardBase = (Base) =>
       header.tabIndex = 0;
       header.setAttribute(
         'aria-label',
-        'Передвинуть столбец ' + this.boardColumns().find((c) => c.value === value)?.label,
+        'Move column ' + this.boardColumns().find((c) => c.value === value)?.label,
       );
       header.onkeydown = (event) => {
         if (
@@ -856,7 +859,7 @@ const BoardBase = (Base) =>
         const source = await this.app.vault.read(this.file),
           board = B.parseBoard(source);
         if (JSON.stringify(board) !== expected)
-          throw new Error('Доска уже изменена. Повторите перемещение.');
+          throw new Error('The board changed. Try moving the column again.');
         const moved = board.columns.find((c) => c.value === value);
         board.columns = board.columns.filter((c) => c.value !== value);
         const index = board.columns.findIndex((c) => c.value === anchor) + (after ? 1 : 0);
@@ -905,7 +908,7 @@ const BoardBase = (Base) =>
             currentKind === kind
               ? task.status
               : this.plugin.columnsFor(task).find((s) => s.kind === kind)?.value;
-          if (!status) throw new Error('Перенесите задачу в нужный столбец на её доске.');
+          if (!status) throw new Error('Move this task to a column on its own board.');
         }
         await this.plugin.actions.move(file, status, anchor, after);
       } catch (e) {
@@ -953,7 +956,7 @@ const BoardBase = (Base) =>
         const badge = el(c.meta, 'span', 'pb-badge pb-due', due.text);
         applyDueAppearance(badge, due);
       }
-      if (!matches) el(c.meta, 'span', 'pb-badge', 'Вне фильтра');
+      if (!matches) el(c.meta, 'span', 'pb-badge', 'Outside current filters');
       c.meta.hidden = !c.meta.children.length;
     }
   };

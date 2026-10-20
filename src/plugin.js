@@ -55,13 +55,13 @@ class PikoBoard extends Plugin {
     this.registerView(TYPE, (leaf) => new BoardView(leaf, this));
     this.registerView(FILE_TYPE, (leaf) => new BoardFileView(leaf, this));
     this.registerExtensions(['pikoboard'], FILE_TYPE);
-    this.addCommand({ id: 'create-board', name: 'Создать доску', callback: () => this.newBoard() });
+    this.addCommand({ id: 'create-board', name: 'Create board', callback: () => this.newBoard() });
     this.registerEvent(
       this.app.workspace.on('file-menu', (menu, file) => {
         if (file && !file.extension && file.children)
           menu.addItem((item) =>
             item
-              .setTitle('Создать доску PikoBoard')
+              .setTitle('Create PikoBoard board')
               .setIcon('columns-3')
               .onClick(() => this.newBoard(file.path === '/' ? '' : file.path)),
           );
@@ -69,14 +69,14 @@ class PikoBoard extends Plugin {
     );
     this.addCommand({
       id: 'restore-message',
-      name: 'Восстановить удалённую запись',
+      name: 'Restore deleted entry',
       callback: () => this.chooseDeletedMessage(),
     });
-    this.addCommand({ id: 'open', name: 'Открыть доску', callback: () => this.chooseBoard() });
-    this.addCommand({ id: 'all-tasks', name: 'Все задачи', callback: () => this.openBoard() });
+    this.addCommand({ id: 'open', name: 'Open board', callback: () => this.chooseBoard() });
+    this.addCommand({ id: 'all-tasks', name: 'All tasks', callback: () => this.openBoard() });
     this.addCommand({
       id: 'undo-task-action',
-      name: 'Отменить действие с задачей',
+      name: 'Undo task action',
       checkCallback: (checking) => {
         if (!this.actions.last) return false;
         if (!checking) this.undoTaskAction();
@@ -85,7 +85,7 @@ class PikoBoard extends Plugin {
     });
     this.addCommand({
       id: 'create',
-      name: 'Создать задачу',
+      name: 'Create task',
       callback: () => this.createTask(),
     });
     this.addRibbonIcon('columns-3', 'PikoBoard', () => this.chooseBoard());
@@ -239,12 +239,12 @@ class PikoBoard extends Plugin {
     new PickModal(
       this.app,
       [
-        { label: 'Все задачи', all: true },
+        { label: 'All tasks', all: true },
         ...boards.map(({ file }) => ({ label: file.basename + ' · ' + file.parent.path, file })),
-        { label: '+ Создать доску', create: true },
+        { label: '+ Create board', create: true },
       ],
       (item) => (item.create ? this.newBoard() : this.openBoard(item.file)),
-      'Открыть доску',
+      'Open board',
     ).open();
   }
   columnsFor(task) {
@@ -256,9 +256,9 @@ class PikoBoard extends Plugin {
   }
   async moveToBoard(file, destination) {
     const task = await this.store.get(file.path);
-    if (!task) throw new Error('Задача не найдена');
+    if (!task) throw new Error('Task not found');
     const columns = destination ? this.boards.get(destination)?.board.columns : statuses;
-    if (!columns?.length) throw new Error('Доска не найдена');
+    if (!columns?.length) throw new Error('Board not found');
     const column =
       columns.find((c) => c.value === task.status) ||
       columns.find(
@@ -272,14 +272,14 @@ class PikoBoard extends Plugin {
     new PickModal(
       this.app,
       [
-        { label: 'Без доски', id: '' },
+        { label: 'No board', id: '' },
         ...boards.map(({ file, board }) => ({
           label: file.basename + ' · ' + file.parent.path,
           id: board.id,
         })),
       ],
       (item) => this.moveToBoard(file, item.id),
-      'Перенести на доску',
+      'Move to board',
     ).open();
   }
   async addExisting(view) {
@@ -289,7 +289,7 @@ class PikoBoard extends Plugin {
       tasks.map((t) => ({ label: t.title, path: t.path })),
       (item) =>
         this.moveToBoard(this.app.vault.getAbstractFileByPath(item.path), view.boardConfig.id),
-      'Добавить задачу без доски',
+      'Add unassigned task',
     ).open();
   }
   refresh() {
@@ -316,7 +316,7 @@ class PikoBoard extends Plugin {
     if (!action || this.disposed) return;
     const fragment = document.createDocumentFragment();
     el(fragment, 'span', '', action.label + ' · ' + action.title);
-    const undo = el(fragment, 'button', 'pb-notice-undo', 'Отменить');
+    const undo = el(fragment, 'button', 'pb-notice-undo', 'Undo');
     undo.onclick = async () => {
       undo.disabled = true;
       await this.undoTaskAction(action);
@@ -326,7 +326,7 @@ class PikoBoard extends Plugin {
   }
   async undoTaskAction(action = this.actions.last) {
     try {
-      if (await this.actions.undo(action)) new Notice('Действие отменено', 2500);
+      if (await this.actions.undo(action)) new Notice('Action undone', 2500);
     } catch (error) {
       new Notice(errorMessage(error));
     }
@@ -420,8 +420,8 @@ class PikoBoard extends Plugin {
       this.refresh();
     });
     const fragment = document.createDocumentFragment();
-    el(fragment, 'span', '', 'Запись удалена. ');
-    const undo = el(fragment, 'button', 'pb-notice-undo', 'Восстановить');
+    el(fragment, 'span', '', 'Entry deleted. ');
+    const undo = el(fragment, 'button', 'pb-notice-undo', 'Restore');
     undo.onclick = async () => {
       undo.disabled = true;
       try {
@@ -436,7 +436,7 @@ class PikoBoard extends Plugin {
   }
   async restoreDeletedMessage(record) {
     const file = this.app.vault.getAbstractFileByPath(record.path);
-    if (!(file instanceof TFile)) throw new Error('Сначала восстановите файл задачи из корзины.');
+    if (!(file instanceof TFile)) throw new Error('Restore the task file from trash first.');
     await this.queue(file, async () => {
       await this.app.vault.process(file, (source) => {
         if (C.readNote(source).updates.some((u) => u.id === record.update.id))
@@ -460,7 +460,7 @@ class PikoBoard extends Plugin {
       }))
       .reverse();
     if (!items.length) {
-      new Notice('Нет удалённых записей');
+      new Notice('No deleted entries');
       return;
     }
     new PickModal(
@@ -468,9 +468,9 @@ class PikoBoard extends Plugin {
       items,
       async (item) => {
         await this.restoreDeletedMessage(item.record);
-        new Notice('Запись восстановлена');
+        new Notice('Entry restored');
       },
-      'Восстановить запись',
+      'Restore entry',
     ).open();
   }
   async restoreStep(file, update) {
@@ -479,9 +479,9 @@ class PikoBoard extends Plugin {
       const yes = await new Promise((resolve) =>
         new ConfirmMessageModal(
           this.app,
-          'Заменить следующий шаг?',
+          'Replace next step?',
           expected + ' → ' + update.text,
-          'Заменить',
+          'Replace',
           resolve,
         ).open(),
       );
@@ -495,17 +495,17 @@ class PikoBoard extends Plugin {
   messageActions(file, update, rendered) {
     const items = [
       {
-        label: 'Копировать',
+        label: 'Copy',
         icon: 'copy',
         action: async () => {
           await navigator.clipboard.writeText(
             rendered.innerText || rendered.textContent || update.text,
           );
-          new Notice('Скопировано', 1500);
+          new Notice('Copied', 1500);
         },
       },
       {
-        label: 'Изменить',
+        label: 'Edit',
         icon: 'pencil',
         action: () =>
           new EditMessageModal(this.app, update, (text) =>
@@ -515,23 +515,23 @@ class PikoBoard extends Plugin {
     ];
     if (update.kind === 'done')
       items.push({
-        label: 'Вернуть в следующий шаг',
+        label: 'Restore as next step',
         icon: 'undo-2',
         action: () => this.restoreStep(file, update),
       });
     items.push(
       { separator: true },
       {
-        label: 'Удалить запись',
+        label: 'Delete entry',
         icon: 'trash-2',
         danger: true,
         action: async () => {
           const yes = await new Promise((resolve) =>
             new ConfirmMessageModal(
               this.app,
-              'Удалить запись?',
+              'Delete entry?',
               update.text,
-              'Удалить',
+              'Delete',
               resolve,
               true,
             ).open(),
@@ -548,7 +548,7 @@ class PikoBoard extends Plugin {
     return actionMenu(
       anchor,
       this.messageActions(file, update, rendered),
-      'Действия с записью',
+      'Entry actions',
       this.app,
     );
   }
@@ -603,7 +603,7 @@ class PikoBoard extends Plugin {
       .getMarkdownFiles()
       .filter((f) => this.app.metadataCache.getFileCache(f)?.frontmatter?.type === 'project')
       .map((f) => ({ label: f.basename, value: f.path.replace(/\.md$/, '') }))
-      .sort((a, b) => a.label.localeCompare(b.label, 'ru'));
+      .sort((a, b) => a.label.localeCompare(b.label, 'en'));
   }
   async ensureFolder(path) {
     let part = '';
@@ -618,7 +618,7 @@ class PikoBoard extends Plugin {
       .replace(/[\\/:*?"<>|\[\]#^]/g, ' ')
       .trim()
       .slice(0, 140);
-    if (!safe || /^\.+$/.test(safe)) safe = 'Заметка';
+    if (!safe || /^\.+$/.test(safe)) safe = 'Note';
     let path = normalizePath((folder ? folder + '/' : '') + safe + '.md'),
       n = 2;
     while (this.app.vault.getAbstractFileByPath(path))
@@ -660,14 +660,14 @@ class PikoBoard extends Plugin {
     await this.persist();
     this.noteCache.delete(file.path);
     this.refresh();
-    new Notice('Задача удалена');
+    new Notice('Task deleted');
     return true;
   }
   newTemplate(file) {
-    new AskModal(this.app, 'Название шаблона', 'Название шаблона', async (name) => {
+    new AskModal(this.app, 'Template name', 'Template name', async (name) => {
       const template = await this.templates.save(name, file);
       await this.openFile(template);
-      new Notice('Шаблон сохранён');
+      new Notice('Template saved');
     }, file?.basename || '').open();
   }
   async submitTask(title, status, view, templateFile) {
@@ -698,7 +698,7 @@ class PikoBoard extends Plugin {
         view.revealNew(task.path);
       }
     } catch (error) {
-      new Notice('Задача создана. Не удалось обновить доску – открой её заново.');
+      new Notice('Task created. Reopen the board to refresh it.');
       console.error(error);
     }
     this.refresh();
@@ -708,15 +708,15 @@ class PikoBoard extends Plugin {
     new PickModal(
       this.app,
       [
-        { label: 'Без проекта', value: '' },
+        { label: 'No project', value: '' },
         ...this.projects(),
-        { label: '+ Новый проект', create: true },
+        { label: '+ New project', create: true },
       ],
       async (i) => {
         if (i.create)
-          new AskModal(this.app, 'Проект', 'Название проекта', async (title) => {
+          new AskModal(this.app, 'Project', 'Project name', async (title) => {
             const safe = title.replace(/[\\/:*?"<>|\[\]#^]/g, ' ').trim();
-            if (!safe || /^\.+$/.test(safe)) throw new Error('Введите название проекта');
+            if (!safe || /^\.+$/.test(safe)) throw new Error('Enter a project name');
             const f = await this.uniqueNote(
               [this.settings.projectsFolder, safe].filter(Boolean).join('/'),
               safe,
@@ -726,7 +726,7 @@ class PikoBoard extends Plugin {
           }).open();
         else await callback(i.value ? '[[' + i.value + ']]' : '');
       },
-      'Проект',
+      'Project',
     ).open();
   }
   chooseNote(source, callback) {
@@ -734,18 +734,18 @@ class PikoBoard extends Plugin {
       .getFiles()
       .filter((f) => f.path !== source.path)
       .map((f) => ({ label: f.basename + ' · ' + (f.parent?.path || ''), file: f }));
-    items.unshift({ label: '+ Новое исследование', create: true });
+    items.unshift({ label: '+ New research note', create: true });
     new PickModal(
       this.app,
       items,
       async (i) => {
         if (i.create)
-          new AskModal(this.app, 'Исследование', 'Название', async (title) =>
+          new AskModal(this.app, 'Research note', 'Name', async (title) =>
             callback(await this.uniqueNote(this.settings.materialsFolder, title, '')),
           ).open();
         else await callback(i.file);
       },
-      'Материалы',
+      'Materials',
     ).open();
   }
   openFile(file) {
@@ -784,7 +784,7 @@ class PikoBoard extends Plugin {
           previous = group;
         }
         const message = el(stage, 'div', 'pb-message');
-        if (u.kind === 'done') el(message, 'span', 'pb-message-kind', 'Сделано');
+        if (u.kind === 'done') el(message, 'span', 'pb-message-kind', 'Done');
         const text = el(message, 'div', 'pb-message-text markdown-rendered');
         await MarkdownRenderer.render(this.app, u.text, text, file.path, component);
         if (seq !== container._seq) return;
@@ -808,11 +808,11 @@ class PikoBoard extends Plugin {
           footer,
           'time',
           '',
-          date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+          date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
         );
         time.dateTime = u.at;
-        time.setAttribute('aria-label', date.toLocaleString('ru-RU'));
-        const menuButton = icon(footer, 'ellipsis', 'Действия с записью', (e) =>
+        time.setAttribute('aria-label', date.toLocaleString('en-GB'));
+        const menuButton = icon(footer, 'ellipsis', 'Entry actions', (e) =>
           this.messageMenu(e, file, u, text, menuButton),
         );
         menuButton.classList.add('pb-message-menu');

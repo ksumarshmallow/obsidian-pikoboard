@@ -36,11 +36,11 @@ For a manual installation, download the repository ZIP and copy `main.js`, `mani
 ## Get started
 
 1. Open **Settings → PikoBoard → Create board**, then choose a name and folder.
-2. Select **+ Задача** (Add task), enter a title and press **Enter**.
+2. Select **+ Task**, enter a title and press **Enter**.
 3. Open the title to write a description or add task properties. Changes save automatically.
 4. Drag the card between columns. Use its arrow to read or write the next step and journal without leaving the board.
 
-Settings are in English. Most task controls and commands are currently in Russian; the [user guide](docs/usage.md) pairs the current labels with English explanations.
+Controls, settings and commands are in English. See the [user guide](docs/usage.md) for the full workflow.
 
 ## Update
 

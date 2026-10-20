@@ -49,8 +49,8 @@ test('project and tag filters combine, unassigned supported, colors stable', () 
 });
 test('relative day labels handle midnight and month changes', () => {
   const now = new Date(2026, 9, 1, 0, 5);
-  assert.equal(C.dayLabel(new Date(2026, 8, 30, 23), now), 'Вчера');
-  assert.equal(C.dayLabel(now, now), 'Сегодня');
+  assert.equal(C.dayLabel(new Date(2026, 8, 30, 23), now), 'Yesterday');
+  assert.equal(C.dayLabel(now, now), 'Today');
 });
 test('history refuses control markers; missing closing marker is not swallowed', () => {
   assert.throws(
