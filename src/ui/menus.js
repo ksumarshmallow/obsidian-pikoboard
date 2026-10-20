@@ -138,35 +138,53 @@ function actionMenu(anchor, items, label = 'Действия с записью',
   choices[0]?.focus();
   return activeActionMenu;
 }
-function picker(parent, label, aria, items, onChange, cls = '') {
+function picker(parent, label, aria, items, onChange, cls = '', options = {}) {
   const wrap = el(parent, 'div', 'pb-picker-wrap');
+  const doc = parent.ownerDocument;
   let popup = null,
     cleanup = () => {};
   const trigger = button(wrap, '', () => (popup ? close() : open()), 'pb-picker ' + cls);
   trigger.setAttribute('aria-label', aria);
   trigger.setAttribute('aria-haspopup', 'listbox');
   trigger.setAttribute('aria-expanded', 'false');
-  el(trigger, 'span', 'pb-picker-label', label);
+  const caption = el(trigger, 'span', 'pb-picker-label', label);
   setIcon(el(trigger, 'span', 'pb-chevron'), 'chevron-down');
-  function close(focus = false) {
+  const choices = () => typeof items === 'function' ? items() : items;
+  trigger._isOpen = () => !!popup;
+  trigger._update = (text) => {
+    caption.textContent = text;
+    if (!popup) return;
+    const current = choices();
+    [...popup.querySelectorAll('button')].forEach((b, index) => {
+      b.setAttribute('aria-selected', String(!!current[index]?.selected));
+      b.setAttribute('aria-disabled', String(!!current[index]?.disabled));
+    });
+  };
+  function close(focus = false, notify = true) {
     if (!popup) return;
     cleanup();
     popup._dispose();
     popup = null;
     trigger.setAttribute('aria-expanded', 'false');
     if (focus) trigger.focus();
+    if (notify) options.onClose?.();
   }
   function open() {
     popup = floatingPopup(trigger, '');
     popup.setAttribute('role', 'listbox');
     popup.setAttribute('aria-label', aria);
-    const choices = typeof items === 'function' ? items() : items;
-    choices.forEach((i) => {
+    if (options.multiple) {
+      popup.setAttribute('aria-multiselectable', 'true');
+      popup.classList.add('pb-multi-picker');
+    }
+    choices().forEach((i) => {
       const b = button(
         popup,
         i.label,
         () => {
-          close(true);
+          const current = choices().find((item) => item.value === i.value);
+          if (!current || current.disabled) return;
+          if (!options.multiple) close(true);
           Promise.resolve(onChange(i)).catch((e) => new Notice(errorMessage(e)));
         },
         'pb-option',
@@ -179,17 +197,23 @@ function picker(parent, label, aria, items, onChange, cls = '') {
       }
       b.setAttribute('role', 'option');
       b.setAttribute('aria-selected', String(!!i.selected));
+      b.setAttribute('aria-disabled', String(!!i.disabled));
+      if (options.multiple) {
+        const check = el(b, 'span', 'pb-option-check');
+        check.setAttribute('aria-hidden', 'true');
+        setIcon(check, 'check');
+      }
     });
     positionPopup(popup, trigger);
     trigger.setAttribute('aria-expanded', 'true');
     const outside = (e) => {
       if (!wrap.contains(e.target) && !popup?.contains(e.target)) close();
     };
-    document.addEventListener('pointerdown', outside);
-    cleanup = () => document.removeEventListener('pointerdown', outside);
+    doc.addEventListener('pointerdown', outside);
+    cleanup = () => doc.removeEventListener('pointerdown', outside);
     popup.onkeydown = (e) => {
       const opts = [...popup.querySelectorAll('button')],
-        index = opts.indexOf(document.activeElement);
+        index = opts.indexOf(doc.activeElement);
       if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) {
         e.preventDefault();
         e.stopPropagation();
@@ -214,7 +238,7 @@ function picker(parent, label, aria, items, onChange, cls = '') {
       if (!popup) open();
     }
   };
-  wrap._dispose = () => close();
+  wrap._dispose = () => close(false, false);
   return trigger;
 }
 

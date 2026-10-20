@@ -1279,6 +1279,36 @@ body:is([data-pikoboard-appearance="piko"], [data-pikoboard-appearance="piko-lig
   height: 14px;
   flex: none;
 }
+.pikoboard .pb-multi-picker .pb-option[aria-selected='true'] {
+  background: transparent;
+  color: var(--pb-text);
+}
+.pikoboard .pb-multi-picker .pb-option:hover,
+.pikoboard .pb-multi-picker .pb-option:focus-visible {
+  background: var(--pb-hover);
+}
+.pikoboard .pb-option-check {
+  display: inline-flex;
+  flex: none;
+  margin-left: auto;
+  width: 17px;
+  height: 17px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--pb-line-hover);
+  border-radius: 4px;
+  color: transparent;
+}
+.pikoboard .pb-option[aria-selected='true'] .pb-option-check {
+  background: var(--pb-accent);
+  border-color: var(--pb-accent);
+  color: var(--pb-bg);
+}
+.pikoboard .pb-multi-picker .pb-option:first-child {
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--pb-line);
+  border-radius: 0;
+}
 .pikoboard .pb-calendar {
   width: 248px;
   max-width: 100%;

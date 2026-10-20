@@ -99,13 +99,18 @@ class FilterBar {
     this.clear.hidden = !f.query;
     const tags = [...new Set([...v.allTasks.flatMap((t) => t.visibleTags), ...f.tags])]
       .filter((t) => t !== '__none__').sort();
-    const statuses = [...v.boardColumns()];
-    if (v.allTasks.some((t) => v.columnForTask(t) === '__unknown__'))
-      statuses.push({ value: '__unknown__', label: 'Без столбца', icon: 'circle-help' });
-    for (const value of f.statuses)
-      if (!statuses.some((s) => s.value === value)) statuses.push({ value, label: value });
+    const statuses = v.availableColumns();
+    const columnLabel = () => {
+      const shown = v.visibleColumns();
+      return shown.length === statuses.length ? 'Все столбцы' : `Столбцы · ${shown.length} из ${statuses.length}`;
+    };
+    // Keep the checklist and keyboard focus alive while columns update behind it.
+    if (this.columnButton?._isOpen() && !v.archive && v.mode !== 'focus') {
+      this.columnButton._update(columnLabel());
+      return;
+    }
     const selected = this.selected();
-    const signature = JSON.stringify([f.project, f.tags, f.statuses, F.hasFilters(f), tags, statuses, this.presets(), selected?.id]);
+    const signature = JSON.stringify([f.project, f.tags, f.statuses, v.archive, F.hasFilters(f), tags, statuses, this.presets(), selected?.id]);
     if (signature === this.signature) return;
     this.signature = signature;
     const focusedLabel = this.controls.contains?.(document.activeElement)
@@ -121,14 +126,19 @@ class FilterBar {
           : value === '__none__' ? [value] : [...f.tags.filter((x) => x !== '__none__'), value];
         v.changed();
       }, 'pb-filter' + (f.tags.length ? ' is-active' : ''));
-    const statusButton = picker(this.controls, f.statuses.length ? statuses.filter((s) => f.statuses.includes(s.value)).map((s) => s.label).join(', ') : 'Все статусы',
-      'Фильтр по статусам', [
-        { value: '', label: 'Все статусы', selected: !f.statuses.length },
-        ...statuses.map((s) => ({ ...s, selected: f.statuses.includes(s.value) })),
-      ], ({ value }) => {
-        v.filters.statuses = !value ? [] : f.statuses.includes(value) ? f.statuses.filter((x) => x !== value) : [...f.statuses, value];
+    const columnButton = this.columnButton = v.archive ? null : picker(this.controls, columnLabel(),
+      'Видимые столбцы', () => {
+        const shown = v.visibleColumns().map((c) => c.value);
+        return [
+          { value: '', label: 'Все столбцы', selected: shown.length === statuses.length },
+          ...statuses.map((s) => ({ ...s, selected: shown.includes(s.value), disabled: shown.length === 1 && shown[0] === s.value })),
+        ];
+      }, ({ value }) => {
+        const shown = v.visibleColumns().map((c) => c.value);
+        const next = !value ? [] : shown.includes(value) ? shown.filter((x) => x !== value) : [...shown, value];
+        v.filters.statuses = next.length === statuses.length ? [] : next;
         v.changed();
-      }, 'pb-filter' + (f.statuses.length ? ' is-active' : ''));
+      }, 'pb-filter' + (f.statuses.length ? ' is-active' : ''), { multiple: true, onClose: () => this.update() });
     const saved = button(this.controls, '', () => this.menu(saved), 'pb-saved-filter' + (selected ? ' is-active' : ''));
     setIcon(el(saved, 'span'), 'bookmark');
     el(saved, 'span', 'pb-picker-label', selected?.name || 'Подборки');
@@ -137,7 +147,7 @@ class FilterBar {
     saved.setAttribute('aria-haspopup', 'menu');
     if (F.hasFilters(f)) icon(this.controls, 'x', 'Сбросить все фильтры', () => this.reset());
     if (focusedLabel) {
-      const target = [tagsButton, statusButton, saved].find((b) => b.getAttribute('aria-label') === focusedLabel);
+      const target = [tagsButton, columnButton, saved].find((b) => b?.getAttribute('aria-label') === focusedLabel);
       (target || this.input).focus();
     }
   }

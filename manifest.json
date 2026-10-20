@@ -1,7 +1,7 @@
 {
   "id": "pikoboard",
   "name": "PikoBoard",
-  "version": "0.9.7",
+  "version": "0.9.8",
   "minAppVersion": "1.12.2",
   "description": "Самостоятельная доска задач: проекты, сроки, комментарии с материалами и следующий шаг.",
   "author": "ksumarshmallow",

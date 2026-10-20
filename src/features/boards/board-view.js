@@ -98,6 +98,11 @@ const BoardBase = (Base) =>
         this.refresh().then(() => this.beginCreate(status));
         return;
       }
+      if (!this.columns?.has(status) && this.filters.statuses?.length && this.boardColumns().some((c) => c.value === status)) {
+        this.filters.statuses = [...new Set([...this.filters.statuses, status])];
+        this.refresh().then(() => this.beginCreate(status));
+        return;
+      }
       const col = this.columns?.get(status);
       if (!col) return;
       if (col.createInput) {
@@ -196,6 +201,21 @@ const BoardBase = (Base) =>
     boardColumns() {
       return this.boardConfig?.columns || statuses;
     }
+    availableColumns() {
+      return [
+        ...this.boardColumns(),
+        ...((this.allTasks || []).some((t) => this.columnForTask(t) === '__unknown__')
+          ? [{ value: '__unknown__', label: 'Без столбца', color: '#858594', opacity: 0.05, icon: 'circle-help' }]
+          : []),
+      ];
+    }
+    visibleColumns() {
+      const all = this.availableColumns();
+      if (this.archive || this.mode === 'focus' || !this.filters.statuses?.length) return all;
+      const selected = all.filter((c) => this.filters.statuses.includes(c.value));
+      // A removed column must not leave the board blank and impossible to use.
+      return selected.length ? selected : all;
+    }
     columnForTask(task) {
       if (this.boardConfig)
         return this.boardConfig.columns.some((c) => c.value === task.status)
@@ -257,6 +277,8 @@ const BoardBase = (Base) =>
       this.filterBar.update();
       const scope = tasks.filter((t) => !!t.archived === this.archive);
       const filters = F.normalizeFilters(this.filters);
+      const shownColumns = this.visibleColumns();
+      filters.statuses = this.archive || focus ? [] : shownColumns.map((c) => c.value);
       const visible = [];
       this.matchedPaths = new Set();
       try {
@@ -277,7 +299,8 @@ const BoardBase = (Base) =>
             matches = metadataMatches && F.matchesTask(task, filters, note, this.columnForTask(task));
           }
           if (matches) this.matchedPaths.add(task.path);
-          if (matches || (!focus && this.recent.has(task.path))) visible.push(task);
+          const inColumn = this.archive || shownColumns.some((c) => c.value === this.columnForTask(task));
+          if (inColumn && (matches || (!focus && this.recent.has(task.path)))) visible.push(task);
         }
       } catch (e) {
         if (seq === this.seq) this.filterBar.showResult(0, scope.length, 'Не удалось выполнить поиск. Попробуйте ещё раз.');
@@ -285,12 +308,10 @@ const BoardBase = (Base) =>
         return;
       }
       this.filterBar.showResult(this.matchedPaths.size, scope.length);
-      const unknown = tasks.some((t) => this.columnForTask(t) === '__unknown__');
       const layout = JSON.stringify([
         this.archive,
         this.mode,
-        this.boardColumns(),
-        unknown,
+        shownColumns,
         this.boardConfig?.id,
       ]);
       if (this.layoutMode !== layout) {
@@ -305,20 +326,7 @@ const BoardBase = (Base) =>
         this.columns = new Map();
         const columns = this.archive
           ? [{ value: 'archive', label: 'Архив', color: '#858594', opacity: 0.05 }]
-          : [
-              ...this.boardColumns(),
-              ...(unknown
-                ? [
-                    {
-                      value: '__unknown__',
-                      label: 'Без столбца',
-                      color: '#858594',
-                      opacity: 0.05,
-                      icon: 'circle-help',
-                    },
-                  ]
-                : []),
-            ];
+          : shownColumns;
         const editable = this.boardConfig && !this.archive;
         this.area.style.gridTemplateColumns = `repeat(${columns.length}, minmax(min(260px, 85vw), 1fr))${editable ? ' 44px' : ''}`;
         for (const s of columns) {
@@ -421,7 +429,7 @@ const BoardBase = (Base) =>
         '+ Задача',
         () =>
           this.plugin.createTask(
-            (focus ? this.boardColumns().find((s) => s.kind === 'active') : this.boardColumns()[0])
+            (focus ? this.boardColumns().find((s) => s.kind === 'active') : this.visibleColumns().find((s) => s.value !== '__unknown__'))
               ?.value || this.boardColumns()[0].value,
             this,
           ),
@@ -664,7 +672,7 @@ const BoardBase = (Base) =>
           return;
         event.preventDefault();
         event.stopPropagation();
-        const columns = this.boardColumns(),
+        const columns = this.visibleColumns(),
           index = columns.findIndex((c) => c.value === value);
         const adjacent = columns[index + (event.key === 'ArrowRight' ? 1 : -1)];
         if (adjacent) this.moveColumn(value, adjacent.value, event.key === 'ArrowRight');

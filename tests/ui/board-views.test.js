@@ -68,6 +68,17 @@ class Element {
       this.children.push(child);
     }
   }
+  prepend(child) {
+    this.insertBefore(child, this.children[0]);
+  }
+  closest(selector) {
+    return selector.startsWith('.') && this.classes().includes(selector.slice(1))
+      ? this : this.parentNode?.closest(selector);
+  }
+  getBoundingClientRect() {
+    return { top: 20, bottom: 50, left: 20, right: 160 };
+  }
+  get firstElementChild() { return this.children[0]; }
   replaceChildren(...children) {
     for (const child of this.children) child.parentNode = null;
     this.children = [];
@@ -101,12 +112,15 @@ class Element {
   }
   querySelectorAll(selector) {
     const matches = (e) =>
-      selector.startsWith('.') ? e.classes().includes(selector.slice(1)) : false;
+      selector.startsWith('.') ? e.classes().includes(selector.slice(1))
+        : selector === '[aria-selected="true"]' ? e.getAttribute('aria-selected') === 'true'
+        : e.tagName === selector;
     return this.children.flatMap((child) => [
       ...(matches(child) ? [child] : []),
       ...child.querySelectorAll(selector),
     ]);
   }
+  querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
 }
 function fixture(
   render = async (app, text, node) => {
@@ -142,7 +156,17 @@ function fixture(
     },
     normalizePath: (x) => x,
   };
-  const document = { createElement: (tag) => Object.assign(new Element(tag), { ownerDocument: document }), activeElement: null };
+  const listeners = new Map();
+  const document = {
+    createElement: (tag) => Object.assign(new Element(tag), { ownerDocument: document }),
+    activeElement: null,
+    addEventListener: (name, fn) => listeners.set(name, fn),
+    removeEventListener: (name) => listeners.delete(name),
+    defaultView: { innerWidth: 1200, innerHeight: 800, addEventListener() {}, removeEventListener() {} },
+  };
+  document.body = document.createElement('body');
+  document.body.connected = true;
+  document.listeners = listeners;
   const scope = {
     require: (name) => (name === 'obsidian' ? obs : require(name)),
     module: { exports: {} },
@@ -150,6 +174,7 @@ function fixture(
     document,
     setTimeout,
     clearTimeout,
+    ResizeObserver: class { observe() {} disconnect() {} },
     crypto: require('node:crypto').webcrypto,
   };
   const load = createLoader(scope);
@@ -209,7 +234,7 @@ test('search keeps its input stable, intersects filters, preserves columns and c
   assert.equal(view.filterBar.input, input);
   assert.equal(document.activeElement, input);
   assert.equal(input.value, 'Преподавателя');
-  assert.deepEqual([...view.columns.keys()], ['open', 'in-progress', 'done']);
+  assert.deepEqual([...view.columns.keys()], ['open']);
   assert.equal(view.filterBar.result.textContent, '1 из 2');
   view.filters.query = 'no-match';
   await view.refresh();
@@ -274,6 +299,72 @@ test('filter controls retain keyboard focus after changing a selection', async (
   view.filters.query = 'new search';
   await view.refresh();
   assert.equal(document.activeElement, view.filterBar.input);
+});
+
+test('column checklist stays open for multiple changes, keeps one column, and restores all', async () => {
+  const { view, document } = boardFixture([
+    { path: 'A', status: 'open', projects: [], visibleTags: [] },
+    { path: 'B', status: 'in-progress', projects: [], visibleTags: [] },
+    { path: 'C', status: 'done', projects: [], visibleTags: [] },
+  ]);
+  let pending;
+  view.changed = () => { pending = view.refresh(); };
+  await view.refresh();
+  const trigger = view.filterBar.columnButton;
+  trigger.onclick();
+  const popup = document.body.querySelector('.pb-multi-picker');
+  assert.equal(popup.getAttribute('aria-multiselectable'), 'true');
+  const options = popup.querySelectorAll('button');
+  options[3].focus();
+  options[3].onclick(); // Hide done.
+  await pending;
+  assert.deepEqual([...view.columns.keys()], ['open', 'in-progress']);
+  assert.equal(document.activeElement, options[3]);
+  assert.equal(options[3].getAttribute('aria-selected'), 'false');
+  assert.equal(view.filterBar.columnButton, trigger);
+  assert.equal(popup.isConnected, true);
+  options[1].onclick(); // Hide backlog.
+  await pending;
+  assert.deepEqual([...view.columns.keys()], ['in-progress']);
+  assert.deepEqual([...view.cards.keys()], ['B']);
+  assert.equal(options[2].getAttribute('aria-disabled'), 'true');
+  options[2].onclick(); // Last column cannot be unchecked.
+  assert.deepEqual([...view.filters.statuses], ['in-progress']);
+  options[0].onclick();
+  await pending;
+  assert.deepEqual([...view.columns.keys()], ['open', 'in-progress', 'done']);
+  assert.deepEqual([...view.cards.keys()], ['A', 'B', 'C']);
+  assert.equal(popup.isConnected, true);
+  popup.onkeydown({ key: 'Escape', preventDefault() {}, stopPropagation() {} });
+  assert.equal(popup.isConnected, false);
+  assert.equal(document.activeElement, trigger);
+});
+
+test('column visibility survives focus and archive, custom empty columns stay selectable', async () => {
+  const { view } = boardFixture([
+    task('A', 'open', 'work'), task('B', 'in-progress', 'work'),
+    { ...task('C', 'done', 'work'), archived: true },
+  ]);
+  view.file = { path: 'Work.pikoboard', basename: 'Work' };
+  view.boardConfig = { id: 'work', columns: customColumns() };
+  view.filters.statuses = ['waiting', 'in-progress'];
+  await view.refresh();
+  assert.deepEqual([...view.columns.keys()], ['in-progress', 'waiting']);
+  assert.equal(view.columns.get('waiting').count.textContent, '0');
+  view.mode = 'focus';
+  await view.refresh();
+  assert.equal(view.columns.size, 4);
+  view.mode = 'board';
+  view.archive = true;
+  await view.refresh();
+  assert.deepEqual([...view.cards.keys()], ['C']);
+  assert.equal(view.filterBar.columnButton, null);
+  view.archive = false;
+  await view.refresh();
+  assert.deepEqual([...view.columns.keys()], ['in-progress', 'waiting']);
+  view.filters.statuses = ['removed-column'];
+  await view.refresh();
+  assert.equal(view.columns.size, 4, 'deleted selections recover to all columns');
 });
 
 test('focus includes every active in-progress task despite saved domain/tag filters and shows no false badges', async () => {

@@ -2459,35 +2459,53 @@ function actionMenu(anchor, items, label = 'Действия с записью',
   choices[0]?.focus();
   return activeActionMenu;
 }
-function picker(parent, label, aria, items, onChange, cls = '') {
+function picker(parent, label, aria, items, onChange, cls = '', options = {}) {
   const wrap = el(parent, 'div', 'pb-picker-wrap');
+  const doc = parent.ownerDocument;
   let popup = null,
     cleanup = () => {};
   const trigger = button(wrap, '', () => (popup ? close() : open()), 'pb-picker ' + cls);
   trigger.setAttribute('aria-label', aria);
   trigger.setAttribute('aria-haspopup', 'listbox');
   trigger.setAttribute('aria-expanded', 'false');
-  el(trigger, 'span', 'pb-picker-label', label);
+  const caption = el(trigger, 'span', 'pb-picker-label', label);
   setIcon(el(trigger, 'span', 'pb-chevron'), 'chevron-down');
-  function close(focus = false) {
+  const choices = () => typeof items === 'function' ? items() : items;
+  trigger._isOpen = () => !!popup;
+  trigger._update = (text) => {
+    caption.textContent = text;
+    if (!popup) return;
+    const current = choices();
+    [...popup.querySelectorAll('button')].forEach((b, index) => {
+      b.setAttribute('aria-selected', String(!!current[index]?.selected));
+      b.setAttribute('aria-disabled', String(!!current[index]?.disabled));
+    });
+  };
+  function close(focus = false, notify = true) {
     if (!popup) return;
     cleanup();
     popup._dispose();
     popup = null;
     trigger.setAttribute('aria-expanded', 'false');
     if (focus) trigger.focus();
+    if (notify) options.onClose?.();
   }
   function open() {
     popup = floatingPopup(trigger, '');
     popup.setAttribute('role', 'listbox');
     popup.setAttribute('aria-label', aria);
-    const choices = typeof items === 'function' ? items() : items;
-    choices.forEach((i) => {
+    if (options.multiple) {
+      popup.setAttribute('aria-multiselectable', 'true');
+      popup.classList.add('pb-multi-picker');
+    }
+    choices().forEach((i) => {
       const b = button(
         popup,
         i.label,
         () => {
-          close(true);
+          const current = choices().find((item) => item.value === i.value);
+          if (!current || current.disabled) return;
+          if (!options.multiple) close(true);
           Promise.resolve(onChange(i)).catch((e) => new Notice(errorMessage(e)));
         },
         'pb-option',
@@ -2500,17 +2518,23 @@ function picker(parent, label, aria, items, onChange, cls = '') {
       }
       b.setAttribute('role', 'option');
       b.setAttribute('aria-selected', String(!!i.selected));
+      b.setAttribute('aria-disabled', String(!!i.disabled));
+      if (options.multiple) {
+        const check = el(b, 'span', 'pb-option-check');
+        check.setAttribute('aria-hidden', 'true');
+        setIcon(check, 'check');
+      }
     });
     positionPopup(popup, trigger);
     trigger.setAttribute('aria-expanded', 'true');
     const outside = (e) => {
       if (!wrap.contains(e.target) && !popup?.contains(e.target)) close();
     };
-    document.addEventListener('pointerdown', outside);
-    cleanup = () => document.removeEventListener('pointerdown', outside);
+    doc.addEventListener('pointerdown', outside);
+    cleanup = () => doc.removeEventListener('pointerdown', outside);
     popup.onkeydown = (e) => {
       const opts = [...popup.querySelectorAll('button')],
-        index = opts.indexOf(document.activeElement);
+        index = opts.indexOf(doc.activeElement);
       if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) {
         e.preventDefault();
         e.stopPropagation();
@@ -2535,7 +2559,7 @@ function picker(parent, label, aria, items, onChange, cls = '') {
       if (!popup) open();
     }
   };
-  wrap._dispose = () => close();
+  wrap._dispose = () => close(false, false);
   return trigger;
 }
 
@@ -3047,6 +3071,11 @@ const BoardBase = (Base) =>
         this.refresh().then(() => this.beginCreate(status));
         return;
       }
+      if (!this.columns?.has(status) && this.filters.statuses?.length && this.boardColumns().some((c) => c.value === status)) {
+        this.filters.statuses = [...new Set([...this.filters.statuses, status])];
+        this.refresh().then(() => this.beginCreate(status));
+        return;
+      }
       const col = this.columns?.get(status);
       if (!col) return;
       if (col.createInput) {
@@ -3145,6 +3174,21 @@ const BoardBase = (Base) =>
     boardColumns() {
       return this.boardConfig?.columns || statuses;
     }
+    availableColumns() {
+      return [
+        ...this.boardColumns(),
+        ...((this.allTasks || []).some((t) => this.columnForTask(t) === '__unknown__')
+          ? [{ value: '__unknown__', label: 'Без столбца', color: '#858594', opacity: 0.05, icon: 'circle-help' }]
+          : []),
+      ];
+    }
+    visibleColumns() {
+      const all = this.availableColumns();
+      if (this.archive || this.mode === 'focus' || !this.filters.statuses?.length) return all;
+      const selected = all.filter((c) => this.filters.statuses.includes(c.value));
+      // A removed column must not leave the board blank and impossible to use.
+      return selected.length ? selected : all;
+    }
     columnForTask(task) {
       if (this.boardConfig)
         return this.boardConfig.columns.some((c) => c.value === task.status)
@@ -3206,6 +3250,8 @@ const BoardBase = (Base) =>
       this.filterBar.update();
       const scope = tasks.filter((t) => !!t.archived === this.archive);
       const filters = F.normalizeFilters(this.filters);
+      const shownColumns = this.visibleColumns();
+      filters.statuses = this.archive || focus ? [] : shownColumns.map((c) => c.value);
       const visible = [];
       this.matchedPaths = new Set();
       try {
@@ -3226,7 +3272,8 @@ const BoardBase = (Base) =>
             matches = metadataMatches && F.matchesTask(task, filters, note, this.columnForTask(task));
           }
           if (matches) this.matchedPaths.add(task.path);
-          if (matches || (!focus && this.recent.has(task.path))) visible.push(task);
+          const inColumn = this.archive || shownColumns.some((c) => c.value === this.columnForTask(task));
+          if (inColumn && (matches || (!focus && this.recent.has(task.path)))) visible.push(task);
         }
       } catch (e) {
         if (seq === this.seq) this.filterBar.showResult(0, scope.length, 'Не удалось выполнить поиск. Попробуйте ещё раз.');
@@ -3234,12 +3281,10 @@ const BoardBase = (Base) =>
         return;
       }
       this.filterBar.showResult(this.matchedPaths.size, scope.length);
-      const unknown = tasks.some((t) => this.columnForTask(t) === '__unknown__');
       const layout = JSON.stringify([
         this.archive,
         this.mode,
-        this.boardColumns(),
-        unknown,
+        shownColumns,
         this.boardConfig?.id,
       ]);
       if (this.layoutMode !== layout) {
@@ -3254,20 +3299,7 @@ const BoardBase = (Base) =>
         this.columns = new Map();
         const columns = this.archive
           ? [{ value: 'archive', label: 'Архив', color: '#858594', opacity: 0.05 }]
-          : [
-              ...this.boardColumns(),
-              ...(unknown
-                ? [
-                    {
-                      value: '__unknown__',
-                      label: 'Без столбца',
-                      color: '#858594',
-                      opacity: 0.05,
-                      icon: 'circle-help',
-                    },
-                  ]
-                : []),
-            ];
+          : shownColumns;
         const editable = this.boardConfig && !this.archive;
         this.area.style.gridTemplateColumns = `repeat(${columns.length}, minmax(min(260px, 85vw), 1fr))${editable ? ' 44px' : ''}`;
         for (const s of columns) {
@@ -3370,7 +3402,7 @@ const BoardBase = (Base) =>
         '+ Задача',
         () =>
           this.plugin.createTask(
-            (focus ? this.boardColumns().find((s) => s.kind === 'active') : this.boardColumns()[0])
+            (focus ? this.boardColumns().find((s) => s.kind === 'active') : this.visibleColumns().find((s) => s.value !== '__unknown__'))
               ?.value || this.boardColumns()[0].value,
             this,
           ),
@@ -3613,7 +3645,7 @@ const BoardBase = (Base) =>
           return;
         event.preventDefault();
         event.stopPropagation();
-        const columns = this.boardColumns(),
+        const columns = this.visibleColumns(),
           index = columns.findIndex((c) => c.value === value);
         const adjacent = columns[index + (event.key === 'ArrowRight' ? 1 : -1)];
         if (adjacent) this.moveColumn(value, adjacent.value, event.key === 'ArrowRight');
@@ -3978,13 +4010,18 @@ class FilterBar {
     this.clear.hidden = !f.query;
     const tags = [...new Set([...v.allTasks.flatMap((t) => t.visibleTags), ...f.tags])]
       .filter((t) => t !== '__none__').sort();
-    const statuses = [...v.boardColumns()];
-    if (v.allTasks.some((t) => v.columnForTask(t) === '__unknown__'))
-      statuses.push({ value: '__unknown__', label: 'Без столбца', icon: 'circle-help' });
-    for (const value of f.statuses)
-      if (!statuses.some((s) => s.value === value)) statuses.push({ value, label: value });
+    const statuses = v.availableColumns();
+    const columnLabel = () => {
+      const shown = v.visibleColumns();
+      return shown.length === statuses.length ? 'Все столбцы' : `Столбцы · ${shown.length} из ${statuses.length}`;
+    };
+    // Keep the checklist and keyboard focus alive while columns update behind it.
+    if (this.columnButton?._isOpen() && !v.archive && v.mode !== 'focus') {
+      this.columnButton._update(columnLabel());
+      return;
+    }
     const selected = this.selected();
-    const signature = JSON.stringify([f.project, f.tags, f.statuses, F.hasFilters(f), tags, statuses, this.presets(), selected?.id]);
+    const signature = JSON.stringify([f.project, f.tags, f.statuses, v.archive, F.hasFilters(f), tags, statuses, this.presets(), selected?.id]);
     if (signature === this.signature) return;
     this.signature = signature;
     const focusedLabel = this.controls.contains?.(document.activeElement)
@@ -4000,14 +4037,19 @@ class FilterBar {
           : value === '__none__' ? [value] : [...f.tags.filter((x) => x !== '__none__'), value];
         v.changed();
       }, 'pb-filter' + (f.tags.length ? ' is-active' : ''));
-    const statusButton = picker(this.controls, f.statuses.length ? statuses.filter((s) => f.statuses.includes(s.value)).map((s) => s.label).join(', ') : 'Все статусы',
-      'Фильтр по статусам', [
-        { value: '', label: 'Все статусы', selected: !f.statuses.length },
-        ...statuses.map((s) => ({ ...s, selected: f.statuses.includes(s.value) })),
-      ], ({ value }) => {
-        v.filters.statuses = !value ? [] : f.statuses.includes(value) ? f.statuses.filter((x) => x !== value) : [...f.statuses, value];
+    const columnButton = this.columnButton = v.archive ? null : picker(this.controls, columnLabel(),
+      'Видимые столбцы', () => {
+        const shown = v.visibleColumns().map((c) => c.value);
+        return [
+          { value: '', label: 'Все столбцы', selected: shown.length === statuses.length },
+          ...statuses.map((s) => ({ ...s, selected: shown.includes(s.value), disabled: shown.length === 1 && shown[0] === s.value })),
+        ];
+      }, ({ value }) => {
+        const shown = v.visibleColumns().map((c) => c.value);
+        const next = !value ? [] : shown.includes(value) ? shown.filter((x) => x !== value) : [...shown, value];
+        v.filters.statuses = next.length === statuses.length ? [] : next;
         v.changed();
-      }, 'pb-filter' + (f.statuses.length ? ' is-active' : ''));
+      }, 'pb-filter' + (f.statuses.length ? ' is-active' : ''), { multiple: true, onClose: () => this.update() });
     const saved = button(this.controls, '', () => this.menu(saved), 'pb-saved-filter' + (selected ? ' is-active' : ''));
     setIcon(el(saved, 'span'), 'bookmark');
     el(saved, 'span', 'pb-picker-label', selected?.name || 'Подборки');
@@ -4016,7 +4058,7 @@ class FilterBar {
     saved.setAttribute('aria-haspopup', 'menu');
     if (F.hasFilters(f)) icon(this.controls, 'x', 'Сбросить все фильтры', () => this.reset());
     if (focusedLabel) {
-      const target = [tagsButton, statusButton, saved].find((b) => b.getAttribute('aria-label') === focusedLabel);
+      const target = [tagsButton, columnButton, saved].find((b) => b?.getAttribute('aria-label') === focusedLabel);
       (target || this.input).focus();
     }
   }
