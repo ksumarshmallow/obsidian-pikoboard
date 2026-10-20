@@ -90,6 +90,15 @@ class Element {
   setAttribute(name, value) {
     this.attributes[name] = String(value);
   }
+  getAttribute(name) {
+    return this.attributes[name];
+  }
+  contains(node) {
+    return node === this || this.children.some((child) => child.contains(node));
+  }
+  focus() {
+    if (this.ownerDocument) this.ownerDocument.activeElement = this;
+  }
   querySelectorAll(selector) {
     const matches = (e) =>
       selector.startsWith('.') ? e.classes().includes(selector.slice(1)) : false;
@@ -133,7 +142,7 @@ function fixture(
     },
     normalizePath: (x) => x,
   };
-  const document = { createElement: (tag) => new Element(tag), activeElement: null };
+  const document = { createElement: (tag) => Object.assign(new Element(tag), { ownerDocument: document }), activeElement: null };
   const scope = {
     require: (name) => (name === 'obsidian' ? obs : require(name)),
     module: { exports: {} },
@@ -181,6 +190,91 @@ function boardFixture(tasks) {
   });
   return { ...f, plugin, view };
 }
+
+test('search keeps its input stable, intersects filters, preserves columns and clears empty results', async () => {
+  const tasks = [
+    { path: 'A', title: 'English', status: 'open', projects: ['[[Projects/A]]'], visibleTags: ['learn'] },
+    { path: 'B', title: 'Other', status: 'in-progress', projects: [], visibleTags: ['learn'] },
+    { path: 'C', title: 'English old', status: 'done', projects: ['[[Projects/A]]'], visibleTags: [], archived: true },
+  ];
+  const { view, plugin, document } = boardFixture(tasks);
+  view.app = { vault: { getAbstractFileByPath: (path) => ({ path }) } };
+  plugin.note = async (file) => ({ body: file.path === 'A' ? 'Найти преподавателя' : '', nextAction: '' });
+  await view.refresh();
+  const input = view.filterBar.input;
+  document.activeElement = input;
+  view.filters = { query: 'Преподавателя', project: 'Projects/A', tags: ['learn'], statuses: ['open'] };
+  await view.refresh();
+  assert.deepEqual([...view.cards.keys()], ['A']);
+  assert.equal(view.filterBar.input, input);
+  assert.equal(document.activeElement, input);
+  assert.equal(input.value, 'Преподавателя');
+  assert.deepEqual([...view.columns.keys()], ['open', 'in-progress', 'done']);
+  assert.equal(view.filterBar.result.textContent, '1 из 2');
+  view.filters.query = 'no-match';
+  await view.refresh();
+  assert.equal(view.cards.size, 0);
+  assert.equal(view.filterBar.result.textContent, 'Ничего не найдено');
+  assert.equal(view.filterBar.controls.querySelectorAll('.pb-icon').some((e) => e.attributes['aria-label'] === 'Сбросить все фильтры'), true);
+  view.filters = { project: '', tags: [], query: '', statuses: [] };
+  await view.refresh();
+  assert.deepEqual([...view.cards.keys()], ['A', 'B']);
+  assert.equal(view.filterBar.input, input);
+  view.archive = true;
+  view.filters.query = 'old';
+  await view.refresh();
+  assert.deepEqual([...view.cards.keys()], ['C']);
+});
+
+test('a slow old search cannot overwrite newer results or the search field', async () => {
+  const tasks = [{ path: 'A', title: 'Alpha', status: 'open', projects: [], visibleTags: [] }];
+  const { view, plugin } = boardFixture(tasks);
+  view.app = { vault: { getAbstractFileByPath: (path) => ({ path }) } };
+  const gate = deferred();
+  let calls = 0;
+  plugin.note = () => ++calls === 1 ? gate.promise : Promise.resolve({});
+  view.filters.query = 'alpha';
+  const oldSearch = view.refresh();
+  await tick();
+  view.filters.query = 'missing';
+  await view.refresh();
+  gate.resolve({});
+  await oldSearch;
+  assert.equal(view.cards.size, 0);
+  assert.equal(view.filterBar.input.value, 'missing');
+  assert.equal(view.filterBar.result.textContent, 'Ничего не найдено');
+});
+
+test('applying a saved combination copies values and restores its archive scope', async () => {
+  const { view } = boardFixture([]);
+  await view.refresh();
+  view.changed = () => {};
+  const preset = { filters: { query: 'english', tags: ['learn'], statuses: ['done'] }, archive: true };
+  view.filterBar.apply(preset);
+  assert.equal(view.archive, true);
+  assert.equal(view.mode, 'board');
+  view.filters.tags.push('another');
+  assert.deepEqual(preset.filters.tags, ['learn']);
+  view.filterBar.reset();
+  assert.equal(view.archive, true, 'clear filters stays within the current archive tab');
+  assert.equal(view.filters.query, '');
+  assert.equal(view.filters.statuses.length, 0);
+});
+
+test('filter controls retain keyboard focus after changing a selection', async () => {
+  const { view, document } = boardFixture([]);
+  await view.refresh();
+  const tags = view.filterBar.controls.querySelectorAll('.pb-picker')[0];
+  tags.focus();
+  view.filters.tags = ['research'];
+  await view.refresh();
+  assert.equal(document.activeElement.getAttribute('aria-label'), 'Фильтр по тегам');
+  assert.notEqual(document.activeElement, tags, 'focus follows the replacement control');
+  view.filterBar.input.focus();
+  view.filters.query = 'new search';
+  await view.refresh();
+  assert.equal(document.activeElement, view.filterBar.input);
+});
 
 test('focus includes every active in-progress task despite saved domain/tag filters and shows no false badges', async () => {
   const tasks = [

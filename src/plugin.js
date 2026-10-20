@@ -12,6 +12,8 @@ const {
 const C = require('./domain/tasks.js');
 const S = require('./storage/task-store.js');
 const B = require('./storage/board-store.js');
+const { SavedFilters } = require('./storage/saved-filters.js');
+const { renamedProject } = require('./domain/filters.js');
 const { el, icon } = require('./ui/elements.js');
 const { errorMessage } = require('./ui/format.js');
 const { appearanceController } = require('./ui/appearance.js');
@@ -35,6 +37,7 @@ class PikoBoard extends Plugin {
     this.data.drafts ||= {};
     this.data.order ||= [];
     this.dataSave = Promise.resolve();
+    this.savedFilters = new SavedFilters(this);
     this.queues = new Map();
     this.modals = new Set();
     this.noteCache = new Map();
@@ -86,6 +89,7 @@ class PikoBoard extends Plugin {
       this.registerEvent(this.app.vault.on(ev, refresh));
     this.registerEvent(
       this.app.vault.on('rename', (file, old) => {
+        this.savedFilters.renameProject(old, file.path).catch(console.error);
         for (const entry of this.data.deletedUpdates || [])
           if (entry.path === old) entry.path = file.path;
         this.data.order = this.data.order.map((p) => (p === old ? file.path : p));
@@ -100,6 +104,8 @@ class PikoBoard extends Plugin {
           this.persist().catch(console.error);
         }
         for (const leaf of this.boardLeaves()) {
+          if (leaf.view.filters)
+            leaf.view.filters.project = renamedProject(leaf.view.filters.project || '', old, file.path);
           for (const key of ['recent', 'expanded'])
             if (leaf.view[key]?.delete(old)) leaf.view[key].add(file.path);
         }

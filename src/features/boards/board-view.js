@@ -1,11 +1,13 @@
 'use strict';
 const { ItemView, FileView, Menu, Notice, TFile, setIcon } = require('obsidian');
 const C = require('../../domain/tasks.js');
+const F = require('../../domain/filters.js');
 const B = require('../../storage/board-store.js');
 const { statusMark, tint, el, button, icon, grow } = require('../../ui/elements.js');
 const { fileTitle, errorMessage } = require('../../ui/format.js');
 const { duePresentation, applyDueAppearance } = require('../../ui/due-date.js');
-const { actionMenu, picker } = require('../../ui/menus.js');
+const { actionMenu } = require('../../ui/menus.js');
+const { FilterBar } = require('./filter-bar.js');
 const { JournalComposer } = require('../journal/composer.js');
 const { nextStep } = require('../journal/next-step.js');
 const { AddColumnModal, BoardSettingsModal, BoardStorageModal } = require('./board-settings.js');
@@ -17,7 +19,7 @@ const BoardBase = (Base) =>
     constructor(leaf, plugin) {
       super(leaf);
       this.plugin = plugin;
-      this.filters = { project: '', tags: [] };
+      this.filters = F.normalizeFilters();
       this.expanded = new Set();
       this.recent = new Set();
       this.cards = new Map();
@@ -40,8 +42,7 @@ const BoardBase = (Base) =>
       return { ...super.getState(), filters: this.filters, archive: this.archive, mode: this.mode };
     }
     async setState(state, result) {
-      if (state?.filters)
-        this.filters = { project: state.filters.project || '', tags: state.filters.tags || [] };
+      if (state?.filters) this.filters = F.normalizeFilters(state.filters);
       this.archive = !!state?.archive;
       this.mode = state?.mode === 'focus' ? 'focus' : 'board';
       await super.setState(state, result);
@@ -59,7 +60,7 @@ const BoardBase = (Base) =>
     }
     async onOpen() {
       this.contentEl.empty();
-      this.root = el(this.contentEl, 'div', 'pikoboard');
+      this.root = el(this.contentEl, 'div', 'pikoboard pb-board-root');
       this.toolbar = el(this.root, 'div', 'pb-toolbar');
       this.domains = el(this.root, 'div', 'pb-domains');
       this.area = el(this.root, 'div', 'pb-board');
@@ -85,6 +86,7 @@ const BoardBase = (Base) =>
     }
     async onClose() {
       this.cancelColumnDrag?.();
+      this.filterBar?.dispose();
       this.seq++;
       for (const c of this.cards.values()) this.disposeCard(c);
       this.toolbar?.querySelectorAll('.pb-picker-wrap').forEach((w) => w._dispose?.());
@@ -178,7 +180,7 @@ const BoardBase = (Base) =>
     changed() {
       this.recent.clear();
       this.app.workspace.requestSaveLayout();
-      this.refresh();
+      this.refresh().catch((e) => new Notice(errorMessage(e)));
     }
     switchMode(mode) {
       this.archive = mode === 'archive';
@@ -219,6 +221,7 @@ const BoardBase = (Base) =>
         }
       }
       if (this.boardError) {
+        if (this.filterBar) this.filterBar.node.hidden = true;
         for (const c of this.cards.values()) this.disposeCard(c);
         this.cards.clear();
         this.columns = null;
@@ -250,13 +253,38 @@ const BoardBase = (Base) =>
       this.allTasks = tasks;
       this.renderToolbar();
       const focus = this.mode === 'focus' && !this.archive;
-      const visible = tasks.filter(
-        (t) =>
-          !!t.archived === this.archive &&
-          (focus
-            ? (t.isActive ?? t.status === 'in-progress')
-            : C.taskMatches(t, this.filters) || this.recent.has(t.path)),
-      );
+      this.filterBar ||= new FilterBar(this);
+      this.filterBar.update();
+      const scope = tasks.filter((t) => !!t.archived === this.archive);
+      const filters = F.normalizeFilters(this.filters);
+      const visible = [];
+      this.matchedPaths = new Set();
+      try {
+        for (const task of scope) {
+          if (seq !== this.seq) return;
+          let matches;
+          if (focus) matches = task.isActive ?? task.status === 'in-progress';
+          else {
+            // Read task notes only when searching; the plugin cache is invalidated on edits.
+            const metadataMatches = F.matchesTask(task, { ...filters, query: '' }, {}, this.columnForTask(task));
+            let note = {};
+            if (metadataMatches && filters.query.trim()) {
+              const file = this.app.vault.getAbstractFileByPath(task.path);
+              if (!file) continue;
+              note = await this.plugin.note(file);
+              if (seq !== this.seq) return;
+            }
+            matches = metadataMatches && F.matchesTask(task, filters, note, this.columnForTask(task));
+          }
+          if (matches) this.matchedPaths.add(task.path);
+          if (matches || (!focus && this.recent.has(task.path))) visible.push(task);
+        }
+      } catch (e) {
+        if (seq === this.seq) this.filterBar.showResult(0, scope.length, 'Не удалось выполнить поиск. Попробуйте ещё раз.');
+        console.error(e);
+        return;
+      }
+      this.filterBar.showResult(this.matchedPaths.size, scope.length);
       const unknown = tasks.some((t) => this.columnForTask(t) === '__unknown__');
       const layout = JSON.stringify([
         this.archive,
@@ -360,7 +388,7 @@ const BoardBase = (Base) =>
         this.file?.path,
         this.mode,
         this.archive,
-        this.filters,
+        this.filters.project,
         this.plugin.projects(),
         this.allTasks.map((t) => [t.projects, t.visibleTags, t.status, t.archived]),
       ]);
@@ -387,42 +415,6 @@ const BoardBase = (Base) =>
         const selected = mode === 'archive' ? this.archive : !this.archive && this.mode === mode;
         const b = button(nav, label, () => this.switchMode(mode), selected ? 'is-active' : '');
         b.setAttribute('aria-pressed', String(selected));
-      }
-      if (!focus) {
-        const filters = el(this.toolbar, 'div', 'pb-filters');
-        const tags = [...new Set(this.allTasks.flatMap((t) => t.visibleTags))].sort();
-        picker(
-          filters,
-          this.filters.tags.length
-            ? this.filters.tags.map((t) => (t === '__none__' ? 'Без тегов' : '#' + t)).join(', ')
-            : 'Все теги',
-          'Фильтр по тегам',
-          [
-            { value: '', label: 'Все теги', selected: !this.filters.tags.length },
-            ...['__none__', ...tags].map((t) => ({
-              value: t,
-              label: t === '__none__' ? 'Без тегов' : '#' + t,
-              selected: this.filters.tags.includes(t),
-            })),
-          ],
-          (i) => {
-            const t = i.value;
-            this.filters.tags = !t
-              ? []
-              : this.filters.tags.includes(t)
-                ? this.filters.tags.filter((x) => x !== t)
-                : t === '__none__'
-                  ? ['__none__']
-                  : [...this.filters.tags.filter((x) => x !== '__none__'), t];
-            this.changed();
-          },
-          'pb-filter',
-        );
-        if (this.filters.tags.length)
-          icon(filters, 'x', 'Сбросить теги', () => {
-            this.filters.tags = [];
-            this.changed();
-          });
       }
       button(
         this.toolbar,
@@ -470,6 +462,8 @@ const BoardBase = (Base) =>
       const options = new Map(this.plugin.projects().map((p) => [p.value, p.label]));
       for (const t of this.allTasks)
         for (const p of t.projects) options.set(C.linkTarget(p), fileTitle(p));
+      if (this.filters.project && this.filters.project !== '__none__' && !options.has(this.filters.project))
+        options.set(this.filters.project, fileTitle(this.filters.project));
       const scope = this.allTasks.filter((t) => !!t.archived === this.archive);
       const choices = [
         {
@@ -491,7 +485,7 @@ const BoardBase = (Base) =>
         },
       ];
       for (const choice of choices) {
-        if ((this.archive || this.boardConfig) && choice.value && choice.count === 0) continue;
+        if ((this.archive || this.boardConfig) && choice.value && choice.count === 0 && choice.value !== this.filters.project) continue;
         const selected = focus ? !choice.value : this.filters.project === choice.value;
         const b = button(
           this.domains,
@@ -872,7 +866,8 @@ const BoardBase = (Base) =>
     updateCard(c, now = new Date()) {
       const t = c.task;
       c.title.textContent = t.title || c.file.basename;
-      const matches = (this.mode === 'focus' && !this.archive) || C.taskMatches(t, this.filters);
+      const matches = (this.mode === 'focus' && !this.archive) ||
+        (this.matchedPaths ? this.matchedPaths.has(t.path) : F.matchesTask(t, this.filters));
       const due = duePresentation(t, now);
       const signature = JSON.stringify([t.projects, t.visibleTags, t.due, due, matches]);
       if (c.metaSignature === signature) return;
