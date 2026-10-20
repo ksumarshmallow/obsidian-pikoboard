@@ -2082,23 +2082,24 @@ function configInput(parent, title, value, type = 'text') {
 module.exports = { statusMark, tint, el, button, icon, grow, configInput };
 
 } },
-"ui/format.js": { dependencies: {"../domain/tasks.js":"domain/tasks.js"},
+"ui/format.js": { dependencies: {"../domain/tasks.js":"domain/tasks.js","../domain/due-dates.js":"domain/due-dates.js"},
 run: (module, exports, require) => {
 'use strict';
 const C = require('../domain/tasks.js');
+const { dueDate } = require('../domain/due-dates.js');
 
 function fileTitle(v) {
   return C.linkTarget(v).split('/').pop();
 }
-function dateText(v) {
+function dateText(v, now = new Date()) {
   if (!v) return 'Срок';
-  const d = new Date(v.length === 10 ? v + 'T12:00:00' : v);
-  return Number.isNaN(+d)
+  const d = dueDate(v);
+  return !d
     ? v
     : d.toLocaleDateString('ru-RU', {
         day: 'numeric',
         month: 'short',
-        ...(d.getFullYear() !== new Date().getFullYear() ? { year: 'numeric' } : {}),
+        ...(d.getFullYear() !== now.getFullYear() ? { year: 'numeric' } : {}),
       });
 }
 function errorMessage(e) {
@@ -2115,6 +2116,49 @@ function errorMessage(e) {
 }
 
 module.exports = { fileTitle, dateText, errorMessage };
+
+} },
+"domain/due-dates.js": { dependencies: {},
+run: (module, exports, require) => {
+'use strict';
+
+const SOON_DAYS = 3;
+const DAY = 86400000;
+
+function calendarDay(date) {
+  // Compare calendar dates, not elapsed hours across daylight-saving changes.
+  const utc = new Date(0);
+  utc.setUTCFullYear(date.getFullYear(), date.getMonth(), date.getDate());
+  return utc.getTime() / DAY;
+}
+
+function dueDate(value) {
+  if (typeof value !== 'string') return null;
+  const parts = value.match(/^(\d{4})-(\d{2})-(\d{2})(?:$|T)/);
+  if (!parts) return null;
+  const [, year, month, day] = parts.map(Number);
+  const date = new Date(0);
+  date.setFullYear(year, month - 1, day);
+  date.setHours(12, 0, 0, 0);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day)
+    return null;
+  if (value.length === 10) return date;
+  // Existing timestamp deadlines use the same local date as their displayed label.
+  const timestamp = new Date(value);
+  return Number.isFinite(+timestamp) ? timestamp : null;
+}
+
+function dueState(task, now = new Date()) {
+  const date = dueDate(task.due);
+  if (!date || !Number.isFinite(+now)) return '';
+  if (task.archived || (task.isCompleted ?? task.status === 'done')) return '';
+  const days = calendarDay(date) - calendarDay(now);
+  if (days < 0) return 'overdue';
+  if (days === 0) return 'today';
+  return days <= SOON_DAYS ? 'soon' : '';
+}
+
+module.exports = { dueDate, dueState, SOON_DAYS };
 
 } },
 "ui/appearance.js": { dependencies: {},
@@ -2784,14 +2828,15 @@ class CreateBoardModal extends Modal {
 module.exports = { CreateBoardModal };
 
 } },
-"features/boards/board-view.js": { dependencies: {"../../domain/tasks.js":"domain/tasks.js","../../storage/board-store.js":"storage/board-store.js","../../ui/elements.js":"ui/elements.js","../../ui/format.js":"ui/format.js","../../ui/menus.js":"ui/menus.js","../journal/composer.js":"features/journal/composer.js","../journal/next-step.js":"features/journal/next-step.js","./board-settings.js":"features/boards/board-settings.js","../tasks/task-modal.js":"features/tasks/task-modal.js","../../constants.js":"constants.js"},
+"features/boards/board-view.js": { dependencies: {"../../domain/tasks.js":"domain/tasks.js","../../storage/board-store.js":"storage/board-store.js","../../ui/elements.js":"ui/elements.js","../../ui/format.js":"ui/format.js","../../ui/due-date.js":"ui/due-date.js","../../ui/menus.js":"ui/menus.js","../journal/composer.js":"features/journal/composer.js","../journal/next-step.js":"features/journal/next-step.js","./board-settings.js":"features/boards/board-settings.js","../tasks/task-modal.js":"features/tasks/task-modal.js","../../constants.js":"constants.js"},
 run: (module, exports, require) => {
 'use strict';
 const { ItemView, FileView, Menu, Notice, TFile, setIcon } = require('obsidian');
 const C = require('../../domain/tasks.js');
 const B = require('../../storage/board-store.js');
 const { statusMark, tint, el, button, icon, grow } = require('../../ui/elements.js');
-const { fileTitle, dateText, errorMessage } = require('../../ui/format.js');
+const { fileTitle, errorMessage } = require('../../ui/format.js');
+const { duePresentation, applyDueAppearance } = require('../../ui/due-date.js');
 const { actionMenu, picker } = require('../../ui/menus.js');
 const { JournalComposer } = require('../journal/composer.js');
 const { nextStep } = require('../journal/next-step.js');
@@ -3656,11 +3701,12 @@ const BoardBase = (Base) =>
         new Notice(errorMessage(e));
       }
     }
-    updateCard(c) {
+    updateCard(c, now = new Date()) {
       const t = c.task;
       c.title.textContent = t.title || c.file.basename;
       const matches = (this.mode === 'focus' && !this.archive) || C.taskMatches(t, this.filters);
-      const signature = JSON.stringify([t.projects, t.visibleTags, t.due, matches]);
+      const due = duePresentation(t, now);
+      const signature = JSON.stringify([t.projects, t.visibleTags, t.due, due, matches]);
       if (c.metaSignature === signature) return;
       c.metaSignature = signature;
       c.meta.replaceChildren();
@@ -3672,7 +3718,10 @@ const BoardBase = (Base) =>
           fileTitle(p),
         );
       for (const tag of t.visibleTags) el(c.meta, 'span', 'pb-badge', '#' + tag);
-      if (t.due) el(c.meta, 'span', 'pb-badge pb-due', dateText(t.due));
+      if (t.due) {
+        const badge = el(c.meta, 'span', 'pb-badge pb-due', due.text);
+        applyDueAppearance(badge, due);
+      }
       if (!matches) el(c.meta, 'span', 'pb-badge', 'Вне фильтра');
       c.meta.hidden = !c.meta.children.length;
     }
@@ -3685,6 +3734,33 @@ class BoardFileView extends BoardBase(FileView) {
 }
 
 module.exports = { BoardView, BoardFileView };
+
+} },
+"ui/due-date.js": { dependencies: {"../domain/due-dates.js":"domain/due-dates.js","./format.js":"ui/format.js"},
+run: (module, exports, require) => {
+'use strict';
+const { dueState } = require('../domain/due-dates.js');
+const { dateText } = require('./format.js');
+
+function duePresentation(task, now = new Date()) {
+  const state = dueState(task, now);
+  const date = dateText(task.due, now);
+  const context = { overdue: 'Просрочено', today: 'Сегодня', soon: 'Скоро' }[state] || 'Срок';
+  return {
+    state,
+    text: state === 'today' ? 'Сегодня' : date,
+    label: task.due ? `${context} · ${date}` : 'Срок',
+  };
+}
+
+function applyDueAppearance(node, presentation) {
+  for (const state of ['overdue', 'today', 'soon'])
+    node.classList.toggle('pb-due-' + state, presentation.state === state);
+  node.setAttribute('aria-label', presentation.label);
+  node.setAttribute('title', presentation.label);
+}
+
+module.exports = { duePresentation, applyDueAppearance };
 
 } },
 "features/journal/composer.js": { dependencies: {"../../domain/tasks.js":"domain/tasks.js","../../ui/elements.js":"ui/elements.js"},
@@ -4636,13 +4712,14 @@ function iconPreferences(raw = {}) {
 module.exports = { iconCatalog, searchIcons, iconPreferences, iconId };
 
 } },
-"features/tasks/task-modal.js": { dependencies: {"../../domain/tasks.js":"domain/tasks.js","../../ui/elements.js":"ui/elements.js","../../ui/format.js":"ui/format.js","../../ui/menus.js":"ui/menus.js","../../ui/rich-editor.js":"ui/rich-editor.js","../journal/composer.js":"features/journal/composer.js","../journal/next-step.js":"features/journal/next-step.js","../../constants.js":"constants.js"},
+"features/tasks/task-modal.js": { dependencies: {"../../domain/tasks.js":"domain/tasks.js","../../ui/elements.js":"ui/elements.js","../../ui/format.js":"ui/format.js","../../ui/due-date.js":"ui/due-date.js","../../ui/menus.js":"ui/menus.js","../../ui/rich-editor.js":"ui/rich-editor.js","../journal/composer.js":"features/journal/composer.js","../journal/next-step.js":"features/journal/next-step.js","../../constants.js":"constants.js"},
 run: (module, exports, require) => {
 'use strict';
 const { Modal, Menu, Notice, MarkdownRenderer, Component, setIcon } = require('obsidian');
 const C = require('../../domain/tasks.js');
 const { statusMark, el, button, icon, grow } = require('../../ui/elements.js');
-const { fileTitle, dateText, errorMessage } = require('../../ui/format.js');
+const { fileTitle, errorMessage } = require('../../ui/format.js');
+const { duePresentation, applyDueAppearance } = require('../../ui/due-date.js');
 const { positionPopup, floatingPopup, picker } = require('../../ui/menus.js');
 const { richEditor } = require('../../ui/rich-editor.js');
 const { JournalComposer } = require('../journal/composer.js');
@@ -4891,11 +4968,11 @@ class TaskModal extends Modal {
     el(b, 'span', 'pb-picker-label', p ? fileTitle(p) : 'Проект');
     setIcon(el(b, 'span', 'pb-chevron'), 'chevron-down');
     b.setAttribute('aria-label', 'Проект');
-    const date = button(this.props, '', () => this.showCalendar(), 'pb-chip pb-date-button');
+    const date = button(this.props, '', () => this.showCalendar(), 'pb-chip pb-date-button pb-due');
     setIcon(el(date, 'span'), 'calendar-days');
-    el(date, 'span', '', dateText(this.task.due));
-    date.setAttribute('aria-label', 'Срок');
+    this.dateLabel = el(date, 'span');
     this.dateButton = date;
+    this.updateDue();
     const system = this.systemTags(),
       visible = C.tagList(this.task.tags).filter(
         (t) => !system.some((s) => s.toLowerCase() === t.toLowerCase()),
@@ -5321,7 +5398,15 @@ class TaskModal extends Modal {
       .uploadMaterial((target) => this.attachNote(target), this.file)
       .catch((e) => this.fail(e));
   }
+  updateDue(now = new Date()) {
+    if (this.closed || !this.dateButton) return;
+    const due = duePresentation(this.task, now);
+    applyDueAppearance(this.dateButton, due);
+    this.dateLabel.textContent = due.text;
+  }
   async syncExternal() {
+    // Only the date chip changes at midnight. Do not interrupt an active editor or calendar.
+    this.updateDue();
     if (
       this.closed ||
       !this.session ||
@@ -5360,6 +5445,7 @@ class TaskModal extends Modal {
         return;
       const propsChanged = this.propsKey(task) !== this.propsSignature;
       this.task = task;
+      this.updateDue();
       if (
         document.activeElement !== this.titleInput &&
         this.titleInput.value.trim() === (beforeTask.title || this.file.basename)

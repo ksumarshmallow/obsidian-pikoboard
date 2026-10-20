@@ -2,7 +2,8 @@
 const { Modal, Menu, Notice, MarkdownRenderer, Component, setIcon } = require('obsidian');
 const C = require('../../domain/tasks.js');
 const { statusMark, el, button, icon, grow } = require('../../ui/elements.js');
-const { fileTitle, dateText, errorMessage } = require('../../ui/format.js');
+const { fileTitle, errorMessage } = require('../../ui/format.js');
+const { duePresentation, applyDueAppearance } = require('../../ui/due-date.js');
 const { positionPopup, floatingPopup, picker } = require('../../ui/menus.js');
 const { richEditor } = require('../../ui/rich-editor.js');
 const { JournalComposer } = require('../journal/composer.js');
@@ -251,11 +252,11 @@ class TaskModal extends Modal {
     el(b, 'span', 'pb-picker-label', p ? fileTitle(p) : 'Проект');
     setIcon(el(b, 'span', 'pb-chevron'), 'chevron-down');
     b.setAttribute('aria-label', 'Проект');
-    const date = button(this.props, '', () => this.showCalendar(), 'pb-chip pb-date-button');
+    const date = button(this.props, '', () => this.showCalendar(), 'pb-chip pb-date-button pb-due');
     setIcon(el(date, 'span'), 'calendar-days');
-    el(date, 'span', '', dateText(this.task.due));
-    date.setAttribute('aria-label', 'Срок');
+    this.dateLabel = el(date, 'span');
     this.dateButton = date;
+    this.updateDue();
     const system = this.systemTags(),
       visible = C.tagList(this.task.tags).filter(
         (t) => !system.some((s) => s.toLowerCase() === t.toLowerCase()),
@@ -681,7 +682,15 @@ class TaskModal extends Modal {
       .uploadMaterial((target) => this.attachNote(target), this.file)
       .catch((e) => this.fail(e));
   }
+  updateDue(now = new Date()) {
+    if (this.closed || !this.dateButton) return;
+    const due = duePresentation(this.task, now);
+    applyDueAppearance(this.dateButton, due);
+    this.dateLabel.textContent = due.text;
+  }
   async syncExternal() {
+    // Only the date chip changes at midnight. Do not interrupt an active editor or calendar.
+    this.updateDue();
     if (
       this.closed ||
       !this.session ||
@@ -720,6 +729,7 @@ class TaskModal extends Modal {
         return;
       const propsChanged = this.propsKey(task) !== this.propsSignature;
       this.task = task;
+      this.updateDue();
       if (
         document.activeElement !== this.titleInput &&
         this.titleInput.value.trim() === (beforeTask.title || this.file.basename)

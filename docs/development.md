@@ -28,6 +28,7 @@ npm run build  # Только пересобрать main.js и styles.css
 | Кнопки, меню, диалоги, форматирование | `src/ui/` |
 | Встроенный редактор Obsidian | `src/ui/rich-editor.js` |
 | Переключение палитры и дополнительные окна Obsidian | `src/ui/appearance.js` |
+| Состояние срока по местной дате и оформление плашки | `src/domain/due-dates.js`, `src/ui/due-date.js` |
 | Общие настройки плагина | `src/settings/settings-tab.js` |
 | Цвета, отступы, размеры и состояния элементов | `src/styles/pikoboard.css` |
 

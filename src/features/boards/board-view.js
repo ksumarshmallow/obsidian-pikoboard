@@ -3,7 +3,8 @@ const { ItemView, FileView, Menu, Notice, TFile, setIcon } = require('obsidian')
 const C = require('../../domain/tasks.js');
 const B = require('../../storage/board-store.js');
 const { statusMark, tint, el, button, icon, grow } = require('../../ui/elements.js');
-const { fileTitle, dateText, errorMessage } = require('../../ui/format.js');
+const { fileTitle, errorMessage } = require('../../ui/format.js');
+const { duePresentation, applyDueAppearance } = require('../../ui/due-date.js');
 const { actionMenu, picker } = require('../../ui/menus.js');
 const { JournalComposer } = require('../journal/composer.js');
 const { nextStep } = require('../journal/next-step.js');
@@ -868,11 +869,12 @@ const BoardBase = (Base) =>
         new Notice(errorMessage(e));
       }
     }
-    updateCard(c) {
+    updateCard(c, now = new Date()) {
       const t = c.task;
       c.title.textContent = t.title || c.file.basename;
       const matches = (this.mode === 'focus' && !this.archive) || C.taskMatches(t, this.filters);
-      const signature = JSON.stringify([t.projects, t.visibleTags, t.due, matches]);
+      const due = duePresentation(t, now);
+      const signature = JSON.stringify([t.projects, t.visibleTags, t.due, due, matches]);
       if (c.metaSignature === signature) return;
       c.metaSignature = signature;
       c.meta.replaceChildren();
@@ -884,7 +886,10 @@ const BoardBase = (Base) =>
           fileTitle(p),
         );
       for (const tag of t.visibleTags) el(c.meta, 'span', 'pb-badge', '#' + tag);
-      if (t.due) el(c.meta, 'span', 'pb-badge pb-due', dateText(t.due));
+      if (t.due) {
+        const badge = el(c.meta, 'span', 'pb-badge pb-due', due.text);
+        applyDueAppearance(badge, due);
+      }
       if (!matches) el(c.meta, 'span', 'pb-badge', 'Вне фильтра');
       c.meta.hidden = !c.meta.children.length;
     }

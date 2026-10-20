@@ -469,6 +469,38 @@ const task = (path, status, board = '') => ({
   isCompleted: status === 'done',
 });
 
+test('date badges refresh at midnight and when completing, reopening, or archiving a task', async () => {
+  const t = { ...task('Dated', 'open'), due: '2026-10-20' };
+  const { view } = boardFixture([t]);
+  await view.refresh();
+  const card = view.cards.get('Dated');
+  const before = new Date(2026, 9, 20, 23, 59);
+  view.updateCard(card, before);
+  const today = card.meta.querySelectorAll('.pb-due')[0];
+  assert.equal(today.textContent, 'Сегодня');
+  assert.equal(today.classList.contains('pb-due-today'), true);
+  view.updateCard(card, before);
+  assert.equal(card.meta.querySelectorAll('.pb-due')[0], today, 'unchanged dates do not rebuild metadata');
+
+  const after = new Date(2026, 9, 21, 0, 0);
+  view.updateCard(card, after);
+  let badge = card.meta.querySelectorAll('.pb-due')[0];
+  assert.equal(badge.classList.contains('pb-due-overdue'), true);
+  assert.match(badge.attributes['aria-label'], /^Просрочено/);
+  card.task = { ...card.task, status: 'custom-finished', isCompleted: true };
+  view.updateCard(card, after);
+  assert.equal(card.meta.querySelectorAll('.pb-due')[0].classList.contains('pb-due-overdue'), false);
+  card.task = { ...card.task, isCompleted: false };
+  view.updateCard(card, after);
+  assert.equal(card.meta.querySelectorAll('.pb-due')[0].classList.contains('pb-due-overdue'), true);
+  card.task = { ...card.task, archived: true };
+  view.updateCard(card, after);
+  assert.equal(card.meta.querySelectorAll('.pb-due')[0].classList.contains('pb-due-overdue'), false);
+  card.task = { ...card.task, due: undefined };
+  view.updateCard(card, after);
+  assert.equal(card.meta.querySelectorAll('.pb-due').length, 0);
+});
+
 test('a named board isolates its tasks and renders its exact columns, colors, emoji and no-icon option', async () => {
   const tasks = [
     task('A', 'open', 'work'),

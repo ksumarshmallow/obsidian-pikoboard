@@ -97,6 +97,33 @@ function setup(body = 'Old') {
   plugin.modals.add(m);
   return { m, plugin, doc, task, shown, disk: () => disk };
 }
+test('date urgency updates while typing without rebuilding properties or touching the draft', async () => {
+  const { m, doc } = setup();
+  const classes = new Set(), attrs = {};
+  m.dateButton = {
+    classList: { toggle: (key, active) => active ? classes.add(key) : classes.delete(key) },
+    setAttribute: (key, value) => { attrs[key] = value; },
+  };
+  m.dateLabel = { textContent: '' };
+  m.task.due = '2026-10-20';
+  m.updateDue(new Date(2026, 9, 20, 23, 59));
+  assert.equal(m.dateLabel.textContent, 'Сегодня');
+  m.updateDue(new Date(2026, 9, 21));
+  assert.equal(classes.has('pb-due-today'), false);
+  assert.equal(classes.has('pb-due-overdue'), true);
+  m.session.set('Keep my draft');
+  doc.activeElement = m.editor;
+  m.task.due = '2000-01-01';
+  m.renderProps = () => { throw new Error('Must not rebuild active controls'); };
+  await m.syncExternal();
+  assert.match(attrs['aria-label'], /^Просрочено/);
+  assert.equal(m.session.value, 'Keep my draft');
+  assert.equal(doc.activeElement, m.editor);
+  m.task.archived = true;
+  await m.syncExternal();
+  assert.equal(classes.has('pb-due-overdue'), false);
+});
+
 test('draft survives modal close, and successful body save clears only body draft', async () => {
   const { m, plugin } = setup();
   m.session.set('New');

@@ -585,10 +585,24 @@ body:is([data-pikoboard-appearance="piko"], [data-pikoboard-appearance="piko-lig
   background: color-mix(in srgb, var(--pb-project-color) 15%, var(--pb-card)) !important;
   color: color-mix(in srgb, var(--pb-project-color) 40%, var(--pb-text)) !important;
 }
-.pikoboard .pb-due.is-overdue,
-.pikoboard .pb-due.pb-overdue {
-  color: var(--pb-danger);
-  background: var(--pb-danger-soft);
+/* Deadlines tint only their chip, leaving cards and columns quiet. */
+.pikoboard .pb-due.pb-due-overdue {
+  color: color-mix(in srgb, var(--pb-danger) 75%, var(--pb-text));
+  background: color-mix(in srgb, var(--pb-danger) 9%, var(--pb-card));
+  border-color: color-mix(in srgb, var(--pb-danger) 23%, var(--pb-line));
+}
+.pikoboard .pb-due.pb-due-today {
+  color: color-mix(in srgb, var(--pb-orange) 80%, var(--pb-text));
+  background: color-mix(in srgb, var(--pb-orange) 12%, var(--pb-card));
+  border-color: color-mix(in srgb, var(--pb-orange) 25%, var(--pb-line));
+}
+.pikoboard .pb-due.pb-due-soon {
+  color: color-mix(in srgb, var(--pb-orange) 60%, var(--pb-text));
+  background: color-mix(in srgb, var(--pb-orange) 7%, var(--pb-card));
+  border-color: color-mix(in srgb, var(--pb-orange) 16%, var(--pb-line));
+}
+.pikoboard .pb-due:is(.pb-due-overdue, .pb-due-today, .pb-due-soon) svg {
+  color: currentColor;
 }
 .pikoboard .pb-muted,
 .pikoboard .pb-column-empty {

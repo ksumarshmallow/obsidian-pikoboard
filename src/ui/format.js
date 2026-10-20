@@ -1,18 +1,19 @@
 'use strict';
 const C = require('../domain/tasks.js');
+const { dueDate } = require('../domain/due-dates.js');
 
 function fileTitle(v) {
   return C.linkTarget(v).split('/').pop();
 }
-function dateText(v) {
+function dateText(v, now = new Date()) {
   if (!v) return 'Срок';
-  const d = new Date(v.length === 10 ? v + 'T12:00:00' : v);
-  return Number.isNaN(+d)
+  const d = dueDate(v);
+  return !d
     ? v
     : d.toLocaleDateString('ru-RU', {
         day: 'numeric',
         month: 'short',
-        ...(d.getFullYear() !== new Date().getFullYear() ? { year: 'numeric' } : {}),
+        ...(d.getFullYear() !== now.getFullYear() ? { year: 'numeric' } : {}),
       });
 }
 function errorMessage(e) {
