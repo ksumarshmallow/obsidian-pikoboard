@@ -14,6 +14,7 @@ const S = require('./storage/task-store.js');
 const B = require('./storage/board-store.js');
 const { SavedFilters } = require('./storage/saved-filters.js');
 const { TaskTemplates } = require('./storage/task-templates.js');
+const { TaskActions } = require('./features/tasks/task-actions.js');
 const { renamedProject } = require('./domain/filters.js');
 const { el, icon } = require('./ui/elements.js');
 const { errorMessage } = require('./ui/format.js');
@@ -47,6 +48,7 @@ class PikoBoard extends Plugin {
     this.boards = new B.BoardStore(this.app);
     await this.boards.list();
     await this.initializeStorage();
+    this.actions = new TaskActions(this, (action) => this.showTaskUndo(action));
     this.templates = new TaskTemplates(this, parseYaml, stringifyYaml);
     this.appearance = appearanceController(this);
     this.addSettingTab(new PikoBoardSettings(this.app, this));
@@ -72,6 +74,15 @@ class PikoBoard extends Plugin {
     });
     this.addCommand({ id: 'open', name: 'Открыть доску', callback: () => this.chooseBoard() });
     this.addCommand({ id: 'all-tasks', name: 'Все задачи', callback: () => this.openBoard() });
+    this.addCommand({
+      id: 'undo-task-action',
+      name: 'Отменить действие с задачей',
+      checkCallback: (checking) => {
+        if (!this.actions.last) return false;
+        if (!checking) this.undoTaskAction();
+        return true;
+      },
+    });
     this.addCommand({
       id: 'create',
       name: 'Создать задачу',
@@ -132,6 +143,7 @@ class PikoBoard extends Plugin {
     this.app.workspace.onLayoutReady(maintain);
   }
   onunload() {
+    this.taskUndoNotice?.hide();
     closeActionMenu();
     for (const modal of this.modals) modal.shutdown();
     for (const model of this.journals.values()) model.save().catch(console.error);
@@ -312,16 +324,27 @@ class PikoBoard extends Plugin {
     return next;
   }
   patch(file, patch) {
-    return this.queue(file, async () => {
-      if (typeof patch === 'function') {
-        const current = await this.api().tasks.get(file.path);
-        if (!current) throw new Error('Задача не найдена');
-        patch = patch(current);
-      }
-      const task = await this.api().tasks.update(file.path, patch, CONTEXT);
-      this.refresh();
-      return task;
-    });
+    return this.actions.patch(file, patch);
+  }
+  showTaskUndo(action) {
+    this.taskUndoNotice?.hide();
+    if (!action || this.disposed) return;
+    const fragment = document.createDocumentFragment();
+    el(fragment, 'span', '', action.label + ' · ' + action.title);
+    const undo = el(fragment, 'button', 'pb-notice-undo', 'Отменить');
+    undo.onclick = async () => {
+      undo.disabled = true;
+      await this.undoTaskAction(action);
+      undo.disabled = false;
+    };
+    this.taskUndoNotice = new Notice(fragment, 8000);
+  }
+  async undoTaskAction(action = this.actions.last) {
+    try {
+      if (await this.actions.undo(action)) new Notice('Действие отменено', 2500);
+    } catch (error) {
+      new Notice(errorMessage(error));
+    }
   }
   async note(file) {
     const mtime = file.stat.mtime,

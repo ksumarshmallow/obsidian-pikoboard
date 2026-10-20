@@ -2547,11 +2547,15 @@ body:is([data-pikoboard-appearance="piko"], [data-pikoboard-appearance="piko-lig
 }
 .pb-notice-undo {
   margin-left: 6px;
-  color: var(--pb-accent);
+  color: var(--pb-accent, var(--text-accent));
   background: transparent;
   border: 0;
   text-decoration: underline;
   cursor: pointer;
+}
+.pikoboard .pb-task-undo:disabled {
+  opacity: .3;
+  cursor: default;
 }
 
 /* A next step is a pinned intention, not a second task-status workflow. */

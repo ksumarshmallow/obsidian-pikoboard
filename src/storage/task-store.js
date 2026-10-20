@@ -1,4 +1,5 @@
 'use strict';
+const { changes, restoreFields } = require('./task-change.js');
 
 // Storage uses only Obsidian's Vault and YAML APIs. No community plugin is loaded.
 const FIELDS = {
@@ -322,12 +323,12 @@ class TaskStore {
       }
     }
   }
-  async update(path, patch, guard) {
+  async update(path, patch, guard, receipt) {
     const file = this.app.vault.getAbstractFileByPath(path);
     if (!file || file.extension !== 'md') throw new Error('Задача не найдена');
     const s = this.config,
       f = s.fieldMapping;
-    let result,
+    let result, change,
       clearSchedule = false;
     await this.app.vault.process(file, (source) => {
       const { data, body, bom } = splitDocument(source, this.parseYaml);
@@ -337,6 +338,7 @@ class TaskStore {
         result = before;
         return source;
       }
+      const original = { ...data };
       const now = this.now().toISOString();
       if ('board' in patch || 'status' in patch) {
         const board = 'board' in patch ? this.boardForWrite(patch.board).id : before.board;
@@ -385,12 +387,44 @@ class TaskStore {
       }
       data[f.dateModified] = now;
       result = this.fromData(file, data);
+      const fields = changes(original, data, f.dateModified);
+      if (receipt && fields.length)
+        change = { fields, mapping: JSON.stringify(f), board: result.board, status: result.status };
       return this.serialize(data, body, bom);
     });
+    // Publish only after Vault.process commits, even if a later settings write fails.
+    if (receipt) receipt.change = change;
     if (clearSchedule && this.archiveSchedule[path]) {
       delete this.archiveSchedule[path];
       await this.onScheduleChange();
     }
+    return result;
+  }
+  async undoChange(file, change) {
+    if (this.app.vault.getAbstractFileByPath(file.path) !== file)
+      throw new Error('Задача удалена или заменена. Отмена недоступна.');
+    const f = this.config.fieldMapping;
+    if (JSON.stringify(f) !== change.mapping)
+      throw new Error('Настройки свойств изменились. Отмена недоступна.');
+    let result;
+    await this.app.vault.process(file, (source) => {
+      const { data, body, bom } = splitDocument(source, this.parseYaml);
+      const current = this.fromData(file, data);
+      if (!current) throw new Error('Задача не найдена');
+      const restored = restoreFields(data, change.fields);
+      const structural = change.fields.some(({ key }) =>
+        [f.status, 'board', f.completedDate].includes(key));
+      if (structural) {
+        if (current.board !== change.board || current.status !== change.status)
+          throw new Error('Статус или доска уже изменились. Отмена недоступна.');
+        const target = this.fromData(file, restored);
+        this.boardForWrite(target.board);
+        this.validateStatus(target.status, target.board);
+      }
+      restored[f.dateModified] = this.now().toISOString();
+      result = this.fromData(file, restored);
+      return this.serialize(restored, body, bom);
+    });
     return result;
   }
   archiveDeadline(task) {

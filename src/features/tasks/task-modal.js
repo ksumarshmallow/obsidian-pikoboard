@@ -8,7 +8,6 @@ const { positionPopup, floatingPopup, picker } = require('../../ui/menus.js');
 const { richEditor } = require('../../ui/rich-editor.js');
 const { JournalComposer } = require('../journal/composer.js');
 const { nextStep } = require('../journal/next-step.js');
-const { CONTEXT } = require('../../constants.js');
 const { TagEditor } = require('./tag-editor.js');
 
 class TaskModal extends Modal {
@@ -94,8 +93,7 @@ class TaskModal extends Modal {
         i.setTitle(this.task.archived ? 'Вернуть' : 'В архив').onClick(async () => {
           if (!(await this.flushSafe())) return;
           try {
-            await this.plugin.api().tasks.archive(this.file.path, !this.task.archived, CONTEXT);
-            this.plugin.refresh();
+            await this.plugin.patch(this.file, { archived: !this.task.archived });
             await this.close();
           } catch (err) {
             this.fail(err);
@@ -354,9 +352,7 @@ class TaskModal extends Modal {
       button(footer, 'Без срока', async () => {
         this.closeCalendar();
         try {
-          this.task = await this.plugin.queue(this.file, () =>
-            this.plugin.api().tasks.clearDue(this.file.path, CONTEXT),
-          );
+          this.task = await this.plugin.patch(this.file, { due: null });
           if (!this.closed) {
             this.renderProps();
             this.dateButton?.focus();

@@ -13,7 +13,7 @@ const { nextStep } = require('../journal/next-step.js');
 const { AddColumnModal, BoardSettingsModal, BoardStorageModal } = require('./board-settings.js');
 const { TaskModal } = require('../tasks/task-modal.js');
 const { pickTemplate } = require('../tasks/template-picker.js');
-const { TYPE, FILE_TYPE, CONTEXT, statuses } = require('../../constants.js');
+const { TYPE, FILE_TYPE, statuses } = require('../../constants.js');
 
 const BoardBase = (Base) =>
   class extends Base {
@@ -460,6 +460,7 @@ const BoardBase = (Base) =>
         focus = this.mode === 'focus' && !this.archive;
       const signature = JSON.stringify([
         this.boardConfig,
+        this.plugin.actions?.last?.id,
         this.file?.path,
         this.mode,
         this.archive,
@@ -491,6 +492,12 @@ const BoardBase = (Base) =>
         const b = button(nav, label, () => this.switchMode(mode), selected ? 'is-active' : '');
         b.setAttribute('aria-pressed', String(selected));
       }
+      const undoAction = this.plugin.actions?.last;
+      const undoButton = icon(this.toolbar, 'undo-2',
+        undoAction ? 'Отменить · ' + undoAction.title : 'Нет действия для отмены',
+        () => this.plugin.undoTaskAction(undoAction));
+      undoButton.classList.add('pb-task-undo');
+      undoButton.disabled = !undoAction;
       button(
         this.toolbar,
         '+ Задача',
@@ -900,20 +907,7 @@ const BoardBase = (Base) =>
               : this.plugin.columnsFor(task).find((s) => s.kind === kind)?.value;
           if (!status) throw new Error('Перенесите задачу в нужный столбец на её доске.');
         }
-        if (task?.status !== status) await this.plugin.patch(file, { status });
-        const old = this.plugin.data.order;
-        this.plugin.data.order = C.moveTaskOrder(
-          C.orderedTasks(await this.plugin.tasks(), old).map((t) => t.path),
-          path,
-          anchor,
-          after,
-        );
-        try {
-          await this.plugin.persist();
-        } catch (e) {
-          this.plugin.data.order = old;
-          throw e;
-        }
+        await this.plugin.actions.move(file, status, anchor, after);
       } catch (e) {
         new Notice(errorMessage(e));
       } finally {
@@ -932,8 +926,7 @@ const BoardBase = (Base) =>
     }
     async archiveTask(c) {
       try {
-        await this.plugin.api().tasks.archive(c.file.path, !c.task.archived, CONTEXT);
-        this.plugin.refresh();
+        await this.plugin.patch(c.file, { archived: !c.task.archived });
       } catch (e) {
         new Notice(errorMessage(e));
       }

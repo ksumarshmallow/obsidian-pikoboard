@@ -231,6 +231,31 @@ function boardFixture(tasks) {
   return { ...f, plugin, view };
 }
 
+test('undo availability updates the toolbar without replacing cards, columns or the search field', async () => {
+  const tasks = [{ path: 'A', title: 'A', status: 'open', projects: [], visibleTags: [] }];
+  const { view, plugin } = boardFixture(tasks);
+  view.app = { vault: { getAbstractFileByPath: (path) => ({ path }) } };
+  plugin.actions = { last: null };
+  let requested;
+  plugin.undoTaskAction = (record) => { requested = record; };
+  await view.refresh();
+  const card = view.cards.get('A'), columns = view.columns, input = view.filterBar.input;
+  assert.equal(view.toolbar.querySelector('.pb-task-undo').disabled, true);
+  const record = { id: 1, title: 'A' };
+  plugin.actions.last = record;
+  await view.refresh();
+  assert.equal(view.cards.get('A'), card);
+  assert.equal(view.columns, columns);
+  assert.equal(view.filterBar.input, input);
+  const button = view.toolbar.querySelector('.pb-task-undo');
+  assert.equal(button.disabled, false);
+  button.onclick();
+  assert.equal(requested, record);
+  plugin.actions.last = null;
+  await view.refresh();
+  assert.equal(view.toolbar.querySelector('.pb-task-undo').disabled, true);
+});
+
 test('search keeps its input stable, intersects filters, preserves columns and clears empty results', async () => {
   const tasks = [
     { path: 'A', title: 'English', status: 'open', projects: ['[[Projects/A]]'], visibleTags: ['learn'] },
@@ -904,9 +929,10 @@ test('dragging on all-tasks maps semantic target to the task own board and retai
   view.allTasks = tasks;
   plugin.columnsFor = () => columns;
   const changes = [];
-  plugin.patch = async (file, patch) => {
-    changes.push([file.path, patch.status]);
-  };
+  plugin.actions = { move: async (file, status, anchor, after) => {
+    if (tasks.find((t) => t.path === file.path).status !== status) changes.push([file.path, status]);
+    plugin.data.order = C.moveTaskOrder(C.orderedTasks(tasks, plugin.data.order).map((t) => t.path), file.path, anchor, after);
+  } };
   plugin.persist = async () => {};
   plugin.refresh = () => {};
   view.refresh = async () => {};

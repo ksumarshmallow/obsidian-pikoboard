@@ -230,14 +230,15 @@ test('functional tag edits read the latest task inside the mutation queue', asyn
   let disk = { ...m.task, tags: ['task'] };
   const gate = defer();
   let first = true;
-  plugin.api = () => ({ tasks: {
+  plugin.store = {
     get: async () => ({ ...disk }),
     update: async (path, patch) => {
       if (first) { first = false; await gate.promise; }
       disk = { ...disk, ...patch };
       return disk;
     },
-  } });
+  };
+  plugin.actions = new (require('../../src/features/tasks/task-actions.js').TaskActions)(plugin);
   const a = plugin.patch(m.file, { tags: ['task', 'first'] });
   const b = plugin.patch(m.file, (task) => ({ tags: [...task.tags, 'second'] }));
   gate.resolve();
