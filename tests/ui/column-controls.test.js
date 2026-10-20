@@ -345,7 +345,7 @@ test('saving closes the symbol popup and locks every control until an error rest
   const f = fixture(),
     modal = new f.AddColumnModal(f.plugin, f.file);
   await modal.onOpen();
-  const name = modal.contentEl.querySelector('[aria-label="Название столбца"]');
+  const name = modal.contentEl.querySelector('[aria-label="Column name"]');
   name.value = 'Review';
   name.oninput();
   const controls = modal.contentEl.querySelectorAll('button,input,textarea,select');
@@ -384,19 +384,19 @@ test('column appearance settings retain semantic roles, and occupied or newly oc
   await modal.onOpen();
   const labels = modal.contentEl.querySelectorAll('input').map((e) => e.attrs['aria-label']);
   assert.equal(
-    labels.some((s) => s?.startsWith('Тип')),
+    labels.some((s) => s?.startsWith('Type')),
     false,
   );
-  assert.equal(modal.contentEl.textContent.includes('Хранение'), false);
+  assert.equal(modal.contentEl.textContent.includes('Storage'), false);
   assert.equal(
-    modal.contentEl.querySelectorAll('[aria-label="Передвинуть столбец вверх"]').length,
+    modal.contentEl.querySelectorAll('[aria-label="Move column up"]').length,
     0,
   );
   f.tasks([{ board: 'board', status: 'done', archived: true }]);
-  await modal.contentEl.querySelector('[aria-label="Удалить столбец done"]').onclick();
+  await modal.contentEl.querySelector('[aria-label="Delete column done"]').onclick();
   assert.equal(modal.board.columns.length, 3);
   f.tasks([]);
-  await modal.contentEl.querySelector('[aria-label="Удалить столбец done"]').onclick();
+  await modal.contentEl.querySelector('[aria-label="Delete column done"]').onclick();
   assert.equal(modal.board.columns.length, 2);
   f.tasks([{ board: 'board', status: 'done' }]);
   assert.equal(await modal.save(), false);
@@ -411,7 +411,7 @@ test('folder settings distinguish root from inherited folders and never alter co
   const f = fixture({ tasksFolder: 'Old tasks' }),
     modal = new f.BoardStorageModal(f.plugin, f.file);
   await modal.onOpen();
-  const input = modal.contentEl.querySelector('[aria-label="Новые задачи"]');
+  const input = modal.contentEl.querySelector('[aria-label="New tasks"]');
   input.value = '';
   input.oninput();
   assert.equal(await modal.save(), true);
@@ -419,8 +419,8 @@ test('folder settings distinguish root from inherited folders and never alter co
   assert.deepEqual(f.data().columns, f.board.columns);
   const inherited = new f.BoardStorageModal(f.plugin, f.file);
   await inherited.onOpen();
-  inherited.contentEl.querySelector('[aria-label="Вернуть общую папку"]').onclick();
-  assert.equal(inherited.contentEl.querySelector('[aria-label="Новые задачи"]').value, 'Tasks');
+  inherited.contentEl.querySelector('[aria-label="Use default folder"]').onclick();
+  assert.equal(inherited.contentEl.querySelector('[aria-label="New tasks"]').value, 'Tasks');
   assert.equal(await inherited.save(), true);
   assert.equal(f.data().tasksFolder, undefined);
 });
@@ -458,9 +458,9 @@ test('one symbol popup handles icons, custom emoji and no-icon without losing ot
   let popup = f.doc.body.querySelector('.pb-symbol-popover');
   popup
     .querySelectorAll('button')
-    .find((b) => b.attrs['aria-label'] === 'Эмодзи')
+    .find((b) => b.attrs['aria-label'] === 'Emoji')
     .onclick();
-  const input = popup.querySelector('[aria-label="Свой эмодзи"]');
+  const input = popup.querySelector('[aria-label="Custom emoji"]');
   input.value = '🦉';
   input.oninput();
   input.parentNode.requestSubmit();
@@ -473,7 +473,7 @@ test('one symbol popup handles icons, custom emoji and no-icon without losing ot
   assert.equal(column.icon, '');
   trigger.onclick();
   popup = f.doc.body.querySelector('.pb-symbol-popover');
-  popup.querySelector('[aria-label="Часы"]').onclick();
+  popup.querySelector('[aria-label="Clock"]').onclick();
   assert.equal(column.icon, 'clock');
   assert.equal(changed, 3);
   assert.equal(column.label, 'Keep name');
@@ -617,7 +617,7 @@ test('full library loads in batches, search reaches later icons and keyboard sel
   const trigger = f.symbolPicker(parent, column, () => {}, f.plugin);
   trigger.onclick();
   const popup = f.doc.body.querySelector('.pb-symbol-popover');
-  const search = popup.querySelector('[aria-label="Найти иконку"]');
+  const search = popup.querySelector('[aria-label="Search icons"]');
   assert.equal(f.doc.activeElement, search);
   assert.equal(popup.querySelectorAll('.pb-symbol-choice').length, 84);
   popup.querySelector('.pb-symbol-more').onclick();
@@ -632,7 +632,7 @@ test('full library loads in batches, search reaches later icons and keyboard sel
   assert.equal(f.listeners.size, 0);
   trigger.onclick();
   const again = f.doc.body.querySelector('.pb-symbol-popover');
-  again.querySelector('[aria-label="Недавние иконки"]').onclick();
+  again.querySelector('[aria-label="Recent icons"]').onclick();
   assert.equal(again.querySelectorAll('.pb-symbol-choice').length, 1);
   assert.equal(again.querySelector('.pb-symbol-choice').dataset.icon, 'test-149');
 });
@@ -644,7 +644,7 @@ test('favorites persist across picker instances without selecting the icon or ed
   const trigger = f.symbolPicker(parent, column, () => changes++, f.plugin);
   trigger.onclick();
   let popup = f.doc.body.querySelector('.pb-symbol-popover');
-  const search = popup.querySelector('[aria-label="Найти иконку"]');
+  const search = popup.querySelector('[aria-label="Search icons"]');
   search.value = 'дом'; search.oninput();
   popup.querySelector('.pb-symbol-choice').onmouseenter();
   await popup.querySelector('.pb-symbol-favorite').onclick();
@@ -657,13 +657,13 @@ test('favorites persist across picker instances without selecting the icon or ed
   const other = f.symbolPicker(parent, { icon: '' }, () => {}, f.plugin);
   other.onclick();
   popup = f.doc.body.querySelector('.pb-symbol-popover');
-  popup.querySelector('[aria-label="Избранные иконки"]').onclick();
+  popup.querySelector('[aria-label="Favorite icons"]').onclick();
   const choice = popup.querySelector('.pb-symbol-choice');
   assert.equal(choice.dataset.icon, 'house');
   choice.onmouseenter();
   await popup.querySelector('.pb-symbol-favorite').onclick();
   assert.equal(popup.querySelectorAll('.pb-symbol-choice').length, 0);
-  assert.equal(popup.querySelector('.pb-symbol-empty').textContent, 'Пока нет избранного');
+  assert.equal(popup.querySelector('.pb-symbol-empty').textContent, 'No favorites yet');
 });
 
 test('failed preference save rolls back favorites, reports the problem and leaves the picker usable', async () => {
@@ -687,7 +687,7 @@ test('empty search cannot select a stale icon; keyboard navigation and closing c
   const trigger = f.symbolPicker(parent, column, () => {}, f.plugin);
   trigger.onclick();
   const popup = f.doc.body.querySelector('.pb-symbol-popover');
-  const search = popup.querySelector('[aria-label="Найти иконку"]');
+  const search = popup.querySelector('[aria-label="Search icons"]');
   search.value = 'nothing-matches'; search.oninput();
   popup.onkeydown(event({ key: 'Enter', target: search }));
   assert.equal(column.icon, 'inbox');

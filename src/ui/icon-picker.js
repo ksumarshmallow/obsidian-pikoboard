@@ -13,7 +13,7 @@ function symbolPicker(parent, column, onChange, plugin) {
   const wrap = el(parent, 'div', 'pb-symbol-wrap');
   let popup = null, cleanup = () => {};
   const trigger = button(wrap, '', () => popup ? close(true) : open(), 'pb-symbol-trigger');
-  trigger.setAttribute('aria-label', 'Выбрать значок');
+  trigger.setAttribute('aria-label', 'Choose icon');
   trigger.setAttribute('aria-haspopup', 'dialog');
   trigger.setAttribute('aria-expanded', 'false');
   const paint = () => {
@@ -39,7 +39,7 @@ function symbolPicker(parent, column, onChange, plugin) {
       return true;
     } catch (_) {
       if (plugin.data.iconPicker === next) plugin.data.iconPicker = previous;
-      new Notice('Не удалось сохранить избранное и недавние иконки.');
+      new Notice('Could not save favorite and recent icons.');
       return false;
     }
   }
@@ -63,7 +63,7 @@ function symbolPicker(parent, column, onChange, plugin) {
     const openedPopup = popup;
     popup.dataset.fitViewport = 'true';
     popup.setAttribute('role', 'dialog');
-    popup.setAttribute('aria-label', 'Значок столбца');
+    popup.setAttribute('aria-label', 'Column icon');
     trigger.setAttribute('aria-expanded', 'true');
     const doc = trigger.ownerDocument;
     const searchRow = el(popup, 'div', 'pb-symbol-search');
@@ -71,11 +71,11 @@ function symbolPicker(parent, column, onChange, plugin) {
     const search = el(searchRow, 'input');
     search.type = 'text';
     search.value = '';
-    search.placeholder = 'Найти иконку…';
-    search.setAttribute('aria-label', 'Найти иконку');
+    search.placeholder = 'Search icons…';
+    search.setAttribute('aria-label', 'Search icons');
     search.setAttribute('autocomplete', 'off');
     search.spellcheck = false;
-    const clear = icon(searchRow, 'x', 'Очистить поиск', () => {
+    const clear = icon(searchRow, 'x', 'Clear search', () => {
       search.value = '';
       draw();
       search.focus();
@@ -86,25 +86,25 @@ function symbolPicker(parent, column, onChange, plugin) {
       tab = value;
       draw();
     };
-    for (const [value, label] of [['all', 'Все'], ['favorites', 'Избранное'], ['recent', 'Недавние']]) {
+    for (const [value, label] of [['all', 'All'], ['favorites', 'Favorites'], ['recent', 'Recent']]) {
       const b = button(tabs, label, () => changeTab(value));
-      b.setAttribute('aria-label', value === 'favorites' ? 'Избранные иконки' : label + ' иконки');
+      b.setAttribute('aria-label', value === 'favorites' ? 'Favorite icons' : label + ' icons');
       tabButtons.set(value, b);
     }
-    const emojiTab = icon(tabs, 'smile', 'Эмодзи', () => changeTab('emoji'));
+    const emojiTab = icon(tabs, 'smile', 'Emoji', () => changeTab('emoji'));
     tabButtons.set('emoji', emojiTab);
     const results = el(popup, 'div', 'pb-symbol-results');
     const grid = el(results, 'div', 'pb-symbol-grid');
     grid.setAttribute('role', 'group');
-    grid.setAttribute('aria-label', 'Иконки');
+    grid.setAttribute('aria-label', 'Icons');
     const empty = el(results, 'div', 'pb-symbol-empty');
-    const more = button(results, 'Ещё иконки', () => appendPage(), 'pb-symbol-more');
+    const more = button(results, 'More icons', () => appendPage(), 'pb-symbol-more');
     const custom = el(popup, 'form', 'pb-symbol-custom');
     const entry = el(custom, 'input');
-    entry.placeholder = 'Свой эмодзи';
-    entry.setAttribute('aria-label', 'Свой эмодзи');
+    entry.placeholder = 'Custom emoji';
+    entry.setAttribute('aria-label', 'Custom emoji');
     entry.maxLength = 16;
-    const use = icon(custom, 'arrow-up', 'Выбрать эмодзи', () => custom.requestSubmit());
+    const use = icon(custom, 'arrow-up', 'Choose emoji', () => custom.requestSubmit());
     use.disabled = true;
     const valid = () => /\p{Extended_Pictographic}|\p{Regional_Indicator}/u.test(entry.value);
     entry.oninput = () => { use.disabled = !valid(); };
@@ -115,7 +115,7 @@ function symbolPicker(parent, column, onChange, plugin) {
     const footer = el(popup, 'div', 'pb-symbol-footer');
     const preview = el(footer, 'span', 'pb-symbol-preview');
     const name = el(footer, 'span', 'pb-symbol-name');
-    const favorite = icon(footer, 'star', 'Добавить в избранное', async () => {
+    const favorite = icon(footer, 'star', 'Add to favorites', async () => {
       if (!active || savingFavorite) return;
       savingFavorite = true;
       favorite.disabled = true;
@@ -132,7 +132,7 @@ function symbolPicker(parent, column, onChange, plugin) {
       }
     });
     favorite.classList.add('pb-symbol-favorite');
-    button(popup, 'Без значка', () => select(''), 'pb-symbol-none');
+    button(popup, 'No icon', () => select(''), 'pb-symbol-none');
 
     function previewIcon(item) {
       active = item;
@@ -141,7 +141,7 @@ function symbolPicker(parent, column, onChange, plugin) {
       name.textContent = item?.label || '';
       name.setAttribute('title', item ? item.id : '');
       const saved = item && preferences().favorites.includes(item.id);
-      favorite.setAttribute('aria-label', (saved ? 'Убрать из избранного' : 'Добавить в избранное') + (item ? ': ' + item.label : ''));
+      favorite.setAttribute('aria-label', (saved ? 'Remove from favorites' : 'Add to favorites') + (item ? ' – ' + item.label : ''));
       favorite.setAttribute('aria-pressed', String(!!saved));
       favorite.disabled = !item || savingFavorite;
     }
@@ -177,9 +177,9 @@ function symbolPicker(parent, column, onChange, plugin) {
       appendPage();
       tabButtons.forEach((b, value) => b.setAttribute('aria-pressed', String(value === tab)));
       empty.hidden = items.length > 0;
-      empty.textContent = search.value.trim() && tab !== 'emoji' ? 'Ничего не найдено'
-        : tab === 'favorites' ? 'Пока нет избранного'
-        : tab === 'recent' ? 'Пока нет недавних иконок' : 'Нет доступных иконок';
+      empty.textContent = search.value.trim() && tab !== 'emoji' ? 'No icons found'
+        : tab === 'favorites' ? 'No favorites yet'
+        : tab === 'recent' ? 'No recent icons yet' : 'No icons available';
       custom.hidden = tab !== 'emoji';
       popup.classList.toggle('is-emoji', tab === 'emoji');
       footer.hidden = tab === 'emoji';

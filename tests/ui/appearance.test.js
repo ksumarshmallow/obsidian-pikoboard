@@ -35,12 +35,14 @@ test('appearance follows settings across main and popout windows without modifyi
   const fresh = document();
   handlers.get('window-open')({}, { document: fresh });
   assert.equal(fresh.body.dataset.pikoboardAppearance, 'piko');
-  plugin.settings = settingsFrom({ appearance: 'obsidian' });
-  appearance.apply();
-  for (const doc of [main, popout, fresh]) {
-    assert.equal(doc.body.dataset.pikoboardAppearance, 'obsidian');
-    assert.equal(doc.body.className, 'theme-light');
-    assert.equal(doc.body.style, 'color: green');
+  for (const value of ['piko-light', 'obsidian', 'piko']) {
+    plugin.settings = settingsFrom({ appearance: value });
+    appearance.apply();
+    for (const doc of [main, popout, fresh]) {
+      assert.equal(doc.body.dataset.pikoboardAppearance, value);
+      assert.equal(doc.body.className, 'theme-light');
+      assert.equal(doc.body.style, 'color: green');
+    }
   }
   cleanup.forEach((fn) => fn());
   for (const doc of [main, popout, fresh])
@@ -64,4 +66,5 @@ test('new vaults inherit Obsidian and invalid appearance values fall back to Obs
   assert.equal(settingsFrom({}).appearance, 'obsidian');
   assert.equal(settingsFrom({ appearance: 'future-unknown-theme' }).appearance, 'obsidian');
   assert.equal(settingsFrom({ appearance: 'piko' }).appearance, 'piko');
+  assert.equal(settingsFrom({ appearance: 'piko-light' }).appearance, 'piko-light');
 });

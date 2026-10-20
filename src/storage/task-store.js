@@ -63,7 +63,7 @@ function folderPath(value) {
     path.startsWith('/') ||
     path.split('/').some((p) => !p || p.startsWith('.') || /[:*?"<>|\u0000-\u001f]/.test(p))
   )
-    throw new Error('Укажите папку внутри хранилища, например «Задачи».');
+    throw new Error('Choose a folder inside the vault, for example “Tasks”.');
   return path;
 }
 function settingsFrom(saved = {}) {
@@ -86,7 +86,7 @@ function settingsFrom(saved = {}) {
       ? Number(result.archiveDays)
       : 7;
   result.completedStatuses = [...new Set(['done', ...strings(result.completedStatuses)])];
-  result.appearance = result.appearance === 'piko' ? 'piko' : 'obsidian';
+  result.appearance = ['piko', 'piko-light'].includes(result.appearance) ? result.appearance : 'obsidian';
   return result;
 }
 function migrateSettings(legacy = {}) {

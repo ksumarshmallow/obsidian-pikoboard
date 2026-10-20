@@ -307,7 +307,7 @@ const BoardBase = (Base) =>
           this.columns.set(s.value, { col, header, count, list });
           if (editable && s.value !== '__unknown__') this.bindColumnDrag(header, col, s.value);
           if (this.boardConfig && !this.archive && s.value !== '__unknown__')
-            icon(header, 'ellipsis', 'Настроить столбец ' + s.label, () =>
+            icon(header, 'ellipsis', 'Edit column ' + s.label, () =>
               new BoardSettingsModal(this.plugin, this.file, s.value).open(),
             );
           if (!this.archive && s.value !== '__unknown__')
@@ -441,12 +441,12 @@ const BoardBase = (Base) =>
             ...(this.file
               ? [
                   {
-                    label: 'Настройки доски',
+                    label: 'Board settings',
                     icon: 'settings-2',
                     action: () => new BoardSettingsModal(this.plugin, this.file).open(),
                   },
                   {
-                    label: 'Папки доски',
+                    label: 'Board folders',
                     icon: 'folder',
                     action: () => new BoardStorageModal(this.plugin, this.file).open(),
                   },

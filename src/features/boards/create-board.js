@@ -12,16 +12,16 @@ class CreateBoardModal extends Modal {
   onOpen() {
     this.modalEl.addClass('pb-config-modal');
     this.contentEl.addClass('pikoboard');
-    el(this.contentEl, 'h2', '', 'Новая доска');
+    el(this.contentEl, 'h2', '', 'New board');
     const form = el(this.contentEl, 'form', 'pb-config-form');
-    const name = configInput(form, 'Название', 'Моя доска');
-    const folder = configInput(form, 'Папка', this.folder === '/' ? '' : this.folder);
-    folder.placeholder = 'Корень хранилища';
+    const name = configInput(form, 'Name', 'My board');
+    const folder = configInput(form, 'Folder', this.folder === '/' ? '' : this.folder);
+    folder.placeholder = 'Vault root';
     const error = el(form, 'div', 'pb-error');
     error.setAttribute('role', 'alert');
     const actions = el(form, 'div', 'pb-config-actions');
-    button(actions, 'Отмена', () => this.close());
-    const save = button(actions, 'Создать доску', () => form.requestSubmit(), 'pb-new');
+    button(actions, 'Cancel', () => this.close());
+    const save = button(actions, 'Create board', () => form.requestSubmit(), 'pb-new');
     form.onsubmit = async (event) => {
       event.preventDefault();
       if (save.disabled) return;

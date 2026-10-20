@@ -22,11 +22,11 @@ class BoardEditModal extends Modal {
       el(this.contentEl, 'p', 'pb-error', errorMessage(e));
     }
   }
-  actions(label = 'Сохранить') {
+  actions(label = 'Save') {
     this.error = el(this.contentEl, 'div', 'pb-error');
     this.error.setAttribute('role', 'alert');
     const actions = el(this.contentEl, 'div', 'pb-config-actions');
-    button(actions, 'Отмена', () => this.close());
+    button(actions, 'Cancel', () => this.close());
     this.saveButton = button(actions, label, () => this.save(), 'pb-new');
   }
   async save() {
@@ -50,7 +50,7 @@ class BoardEditModal extends Modal {
         const tasks = (await this.plugin.tasks()).filter((t) => t.board === next.id);
         if (removed.some((c) => tasks.some((t) => t.status === c.value)))
           throw new Error(
-            'В столбце есть задачи, включая архив. Сначала перенесите их в другой столбец.',
+            'This column contains tasks, including archived tasks. Move them to another column first.',
           );
       }
       await this.plugin.boards.save(this.file, next, this.original);
@@ -75,7 +75,7 @@ class BoardEditModal extends Modal {
 class AddColumnModal extends BoardEditModal {
   render() {
     this.modalEl.addClass('pb-add-column-modal');
-    el(this.contentEl, 'h2', '', 'Новый столбец');
+    el(this.contentEl, 'h2', '', 'New column');
     const form = el(this.contentEl, 'form', 'pb-config-form');
     this.column = {
       value: crypto.randomUUID(),
@@ -91,14 +91,14 @@ class AddColumnModal extends BoardEditModal {
     };
     symbolPicker(preview, this.column, paint, this.plugin);
     const name = el(preview, 'input', 'pb-config-column-name');
-    name.placeholder = 'Название столбца';
-    name.setAttribute('aria-label', 'Название столбца');
+    name.placeholder = 'Column name';
+    name.setAttribute('aria-label', 'Column name');
     name.oninput = () => {
       this.column.label = name.value;
     };
     columnColors(form, this.column, paint);
     paint();
-    this.actions('Добавить');
+    this.actions('Add');
     form.onsubmit = (e) => {
       e.preventDefault();
       this.save();
@@ -108,14 +108,14 @@ class AddColumnModal extends BoardEditModal {
   async save() {
     if (this.saving) return false;
     if (!this.column.label.trim()) {
-      this.error.textContent = 'Введите название столбца.';
+      this.error.textContent = 'Enter a column name.';
       return false;
     }
     if (
       this.board.columns.length >= 30 &&
       !this.board.columns.some((c) => c.value === this.column.value)
     ) {
-      this.error.textContent = 'На доске уже 30 столбцов.';
+      this.error.textContent = 'This board already has 30 columns.';
       return false;
     }
     // Keep the pending column only once when retrying after an error.
@@ -147,7 +147,7 @@ class BoardSettingsModal extends BoardEditModal {
   render() {
     this.onClose();
     this.contentEl.replaceChildren();
-    el(this.contentEl, 'h2', '', 'Столбцы');
+    el(this.contentEl, 'h2', '', 'Columns');
     const list = el(this.contentEl, 'div', 'pb-config-columns');
     let focusInput;
     for (const [index, c] of this.board.columns.entries()) {
@@ -159,11 +159,11 @@ class BoardSettingsModal extends BoardEditModal {
       symbolPicker(top, c, paint, this.plugin);
       const title = el(top, 'input', 'pb-config-column-name');
       title.value = c.label;
-      title.setAttribute('aria-label', 'Название столбца ' + (index + 1));
+      title.setAttribute('aria-label', 'Column name ' + (index + 1));
       title.oninput = () => {
         c.label = title.value;
       };
-      const remove = icon(top, 'trash-2', 'Удалить столбец ' + c.label, async () => {
+      const remove = icon(top, 'trash-2', 'Delete column ' + c.label, async () => {
         if (this.saving || this.removing) return;
         this.removing = true;
         try {
@@ -172,7 +172,7 @@ class BoardSettingsModal extends BoardEditModal {
             (t) => t.board === this.board.id && t.status === c.value,
           ).length;
           if (count) {
-            this.error.textContent = `В «${c.label}» есть задачи: ${count}, включая архив. Сначала перенесите их в другой столбец.`;
+            this.error.textContent = `“${c.label}” contains ${count} tasks, including archived tasks. Move them to another column first.`;
             return;
           }
           this.board.columns = this.board.columns.filter((x) => x.value !== c.value);
@@ -190,20 +190,20 @@ class BoardSettingsModal extends BoardEditModal {
       const color = el(controls, 'input', 'pb-color-custom');
       color.type = 'color';
       color.value = c.color;
-      color.setAttribute('aria-label', 'Цвет столбца ' + c.label);
+      color.setAttribute('aria-label', 'Column color ' + c.label);
       color.oninput = () => {
         c.color = color.value;
         paint();
       };
       const label = el(controls, 'label', 'pb-opacity-control');
-      el(label, 'span', '', 'Прозрачность');
+      el(label, 'span', '', 'Transparency');
       const range = el(label, 'input', 'pb-opacity-range');
       range.type = 'range';
       range.min = '0';
       range.max = '100';
       range.step = '1';
       range.value = String(Math.round((1 - c.opacity) * 100));
-      range.setAttribute('aria-label', 'Прозрачность фона ' + c.label);
+      range.setAttribute('aria-label', 'Background transparency ' + c.label);
       const amount = el(label, 'output', '', range.value + '%');
       range.oninput = () => {
         c.opacity = (100 - Number(range.value)) / 100;
@@ -220,11 +220,11 @@ class BoardSettingsModal extends BoardEditModal {
 class BoardStorageModal extends BoardEditModal {
   render() {
     this.modalEl.addClass('pb-storage-modal');
-    el(this.contentEl, 'h2', '', 'Папки доски');
+    el(this.contentEl, 'h2', '', 'Board folders');
     const form = el(this.contentEl, 'form', 'pb-config-form');
     for (const [key, label] of [
-      ['tasksFolder', 'Новые задачи'],
-      ['attachmentsFolder', 'Вложения'],
+      ['tasksFolder', 'New tasks'],
+      ['attachmentsFolder', 'Attachments'],
     ]) {
       const group = el(form, 'div', 'pb-folder-setting');
       const top = el(group, 'div', 'pb-folder-heading');
@@ -233,19 +233,19 @@ class BoardStorageModal extends BoardEditModal {
       const row = el(group, 'div', 'pb-folder-input');
       const input = el(row, 'input', 'pb-config-input');
       input.setAttribute('aria-label', label);
-      input.placeholder = 'Корень хранилища';
-      const reset = icon(row, 'undo-2', 'Вернуть общую папку', () => {
+      input.placeholder = 'Vault root';
+      const reset = icon(row, 'undo-2', 'Use default folder', () => {
         delete this.board[key];
         paint();
       });
       const paint = () => {
         input.value = this.board[key] ?? this.plugin.settings[key] ?? '';
-        badge.textContent = this.board[key] === undefined ? 'Общая папка' : 'Для этой доски';
+        badge.textContent = this.board[key] === undefined ? 'Default folder' : 'This board';
         reset.hidden = this.board[key] === undefined;
       };
       input.oninput = () => {
         this.board[key] = input.value.trim();
-        badge.textContent = 'Для этой доски';
+        badge.textContent = 'This board';
         reset.hidden = false;
       };
       paint();

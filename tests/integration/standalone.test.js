@@ -256,22 +256,22 @@ test('an unreadable legacy config reports the fallback without preventing standa
   assert.equal(plugin.settings.tasksFolder, 'Задачи');
 });
 
-test('an existing installation retains Piko until the user changes its appearance', async () => {
+test('an existing installation without an appearance inherits Obsidian and preserves an explicit preset', async () => {
   const { plugin } = setup({ settings: { tasksFolder: 'My tasks' } });
   const saved = [];
   plugin.saveData = async (data) => saved.push(data);
   await plugin.initializeStorage();
-  assert.equal(plugin.settings.appearance, 'piko');
-  assert.equal(saved[0].settings.appearance, 'piko');
+  assert.equal(plugin.settings.appearance, 'obsidian');
+  assert.equal(saved.length, 0, 'the default does not force a preference write');
   assert.equal(plugin.settings.tasksFolder, 'My tasks');
   plugin.refresh = () => { throw Error('A palette change must not recreate active editors'); };
   const applied = [];
   plugin.appearance = { apply: () => applied.push(plugin.settings.appearance) };
-  await plugin.saveSettings({ appearance: 'obsidian' });
-  assert.deepEqual(applied, ['obsidian']);
-  assert.equal(saved.at(-1).settings.appearance, 'obsidian');
+  await plugin.saveSettings({ appearance: 'piko-light' });
+  assert.deepEqual(applied, ['piko-light']);
+  assert.equal(saved.at(-1).settings.appearance, 'piko-light');
   await plugin.initializeStorage();
-  assert.equal(plugin.settings.appearance, 'obsidian', 'explicit preference survives restart');
+  assert.equal(plugin.settings.appearance, 'piko-light', 'explicit preference survives restart');
 });
 
 test('failed preference writes retain the active appearance and allow a later retry', async () => {

@@ -1,12 +1,12 @@
 'use strict';
 
 const LABELS = {
-  inbox: 'Входящие', 'circle-dashed': 'В процессе', 'circle-check': 'Готово',
-  clock: 'Часы', star: 'Звезда', flag: 'Флаг', bookmark: 'Закладка',
-  lightbulb: 'Идея', 'flask-conical': 'Исследование', rocket: 'Ракета',
-  heart: 'Сердце', coffee: 'Кофе', 'briefcase-business': 'Работа', house: 'Дом',
-  'book-open': 'Книга', plane: 'Путешествие', 'message-circle': 'Сообщение',
-  pause: 'Пауза', eye: 'Проверка', archive: 'Архив',
+  inbox: 'Inbox', 'circle-dashed': 'In progress', 'circle-check': 'Done',
+  clock: 'Clock', star: 'Star', flag: 'Flag', bookmark: 'Bookmark',
+  lightbulb: 'Idea', 'flask-conical': 'Research', rocket: 'Rocket',
+  heart: 'Heart', coffee: 'Coffee', 'briefcase-business': 'Work', house: 'Home',
+  'book-open': 'Book', plane: 'Travel', 'message-circle': 'Message',
+  pause: 'Pause', eye: 'Review', archive: 'Archive',
 };
 // Search hints supplement the icon names supplied by Obsidian; no external icon data.
 const KEYWORDS = {

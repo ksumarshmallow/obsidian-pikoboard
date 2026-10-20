@@ -25,42 +25,42 @@ function object(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 function folderPath(value) {
-  if (typeof value !== 'string') throw new Error('Папка должна быть указана текстом.');
-  if (/[\u0000-\u001f\u007f]/.test(value)) throw new Error('Путь содержит недопустимые символы.');
+  if (typeof value !== 'string') throw new Error('Enter a folder path as text.');
+  if (/[\u0000-\u001f\u007f]/.test(value)) throw new Error('The path contains invalid characters.');
   const path = value.trim().replace(/\\/g, '/').replace(/\/$/, '');
   if (!path) return '';
   if (
     path.startsWith('/') ||
     path.split('/').some((part) => !part || part.startsWith('.') || /[:*?"<>|]/.test(part))
   )
-    throw new Error('Укажите папку внутри хранилища, без скрытых папок и «..».');
+    throw new Error('Choose a folder inside the vault without hidden folders or “..”.');
   return path;
 }
 function identifier(value, name) {
   if (typeof value !== 'string' || !/^[a-z0-9][a-z0-9_-]{0,159}$/i.test(value))
-    throw new Error(`Некорректный ID ${name}.`);
+    throw new Error(`Invalid ${name} ID.`);
   return value;
 }
 function normalizeBoard(input) {
-  if (!object(input)) throw new Error('Некорректный файл доски.');
-  const board = { ...input, id: identifier(input.id, 'доски') };
+  if (!object(input)) throw new Error('Invalid board file.');
+  const board = { ...input, id: identifier(input.id, 'board') };
   if (!Array.isArray(input.columns) || !input.columns.length || input.columns.length > 30)
-    throw new Error('На доске должно быть от 1 до 30 столбцов.');
+    throw new Error('A board must have 1 to 30 columns.');
   const seen = new Set();
   board.columns = input.columns.map((inputColumn) => {
-    if (!object(inputColumn)) throw new Error('Некорректный столбец.');
-    const column = { ...inputColumn, value: identifier(inputColumn.value, 'столбца') };
-    if (seen.has(column.value)) throw new Error('ID столбцов не должны повторяться.');
+    if (!object(inputColumn)) throw new Error('Invalid column.');
+    const column = { ...inputColumn, value: identifier(inputColumn.value, 'column') };
+    if (seen.has(column.value)) throw new Error('Column IDs must be unique.');
     seen.add(column.value);
     if (typeof column.label !== 'string' || !column.label.trim())
-      throw new Error('Укажите название столбца.');
+      throw new Error('Enter a column name.');
     column.label = column.label.trim();
     column.kind ??= 'todo';
     if (!['todo', 'active', 'done'].includes(column.kind))
-      throw new Error('Неизвестный тип столбца.');
+      throw new Error('Unknown column role.');
     column.color ??= '#a7a1db';
     if (typeof column.color !== 'string' || !/^#[a-f\d]{3}(?:[a-f\d]{3})?$/i.test(column.color))
-      throw new Error('Цвет столбца должен быть в формате #RRGGBB.');
+      throw new Error('Use #RRGGBB for the column color.');
     column.color = column.color.toLowerCase();
     if (column.color.length === 4)
       column.color = '#' + [...column.color.slice(1)].map((c) => c + c).join('');
@@ -71,10 +71,10 @@ function normalizeBoard(input) {
       column.opacity < 0 ||
       column.opacity > 1
     )
-      throw new Error('Интенсивность цвета должна быть от 0 до 1.');
+      throw new Error('Color opacity must be between 0 and 1.');
     column.icon ??= '';
     if (typeof column.icon !== 'string' || column.icon.length > 80)
-      throw new Error('Некорректная иконка столбца.');
+      throw new Error('Invalid column icon.');
     column.icon = column.icon.trim();
     return column;
   });
@@ -87,7 +87,7 @@ function parseBoard(text) {
   try {
     data = JSON.parse(String(text).replace(/^\uFEFF/, ''));
   } catch (_) {
-    throw new Error('Не удалось прочитать файл доски: некорректный JSON.');
+    throw new Error('The board file could not be read. Its JSON is invalid.');
   }
   return normalizeBoard(data);
 }
@@ -106,7 +106,7 @@ function copyRecord(record) {
 }
 function boardFile(file) {
   if (!file || file.extension !== EXTENSION)
-    throw new Error('Выберите файл доски с расширением .pikoboard.');
+    throw new Error('Choose a .pikoboard file.');
 }
 
 class BoardStore {
@@ -139,12 +139,12 @@ class BoardStore {
           if (existing) {
             errors.push({
               path: existing.file.path,
-              error: new Error('Этот ID используется несколькими досками.'),
+              error: new Error('Multiple boards use this ID.'),
             });
             next.delete(board.id);
           }
           duplicates.add(board.id);
-          throw new Error('Этот ID используется несколькими досками.');
+          throw new Error('Multiple boards use this ID.');
         }
         next.set(board.id, { file, board });
       } catch (error) {
@@ -177,7 +177,7 @@ class BoardStore {
     const failed = this.errors.find((entry) => entry.path === file.path);
     if (failed) throw failed.error;
     const record = [...this.cache.values()].find((entry) => entry.file.path === file.path);
-    if (!record) throw new Error('Доска не найдена.');
+    if (!record) throw new Error('Board not found.');
     return copyRecord(record);
   }
   create(input) {
@@ -186,21 +186,21 @@ class BoardStore {
     return work;
   }
   async createFile({ title, folder = '', id, ...options }) {
-    if (typeof title !== 'string' || !title.trim()) throw new Error('Введите название доски.');
+    if (typeof title !== 'string' || !title.trim()) throw new Error('Enter a board name.');
     if (/[\u0000-\u001f\u007f]/.test(title))
-      throw new Error('Название содержит недопустимые символы.');
-    if (title.trim().startsWith('.')) throw new Error('Введите название без скрытого пути.');
+      throw new Error('The name contains invalid characters.');
+    if (title.trim().startsWith('.')) throw new Error('Enter a name without a hidden path.');
     const safe = title
       .trim()
       .replace(/[\\/:*?"<>|\[\]#^]/g, ' ')
       .replace(/^\.+|\.+$/g, '')
       .trim()
       .slice(0, 140);
-    if (!safe || safe.startsWith('.')) throw new Error('Введите название без скрытого пути.');
+    if (!safe || safe.startsWith('.')) throw new Error('Enter a name without a hidden path.');
     const base = folderPath(folder),
       board = makeBoard({ ...options, ...(id !== undefined ? { id } : {}) });
     await this.list();
-    if (this.cache.has(board.id)) throw new Error('Доска с таким ID уже существует.');
+    if (this.cache.has(board.id)) throw new Error('A board with this ID already exists.');
     // Duplicate invalid identities are excluded from cache but still reserve their ID.
     for (const issue of this.errors) {
       const file = this.app.vault.getAbstractFileByPath(issue.path);
@@ -211,14 +211,14 @@ class BoardStore {
       } catch (_) {
         continue;
       }
-      if (existing.id === board.id) throw new Error('Доска с таким ID уже существует.');
+      if (existing.id === board.id) throw new Error('A board with this ID already exists.');
     }
     let current = '';
     for (const part of base.split('/').filter(Boolean)) {
       current = current ? current + '/' + part : part;
       const found = this.app.vault.getAbstractFileByPath(current);
       if (found && typeof found.extension === 'string')
-        throw new Error('Путь к папке занят файлом.');
+        throw new Error('A file already exists at this folder path.');
       if (!found) await this.app.vault.createFolder(current);
     }
     for (let n = 1; ; n++) {
@@ -243,10 +243,10 @@ class BoardStore {
     await this.app.vault.process(file, (text) => {
       if (expectedText !== undefined && text !== expectedText)
         throw new Error(
-          'Доска уже изменена. Откройте настройки заново, чтобы сохранить изменения.',
+          'The board has changed. Reopen settings before saving your changes.',
         );
       const current = parseBoard(text);
-      if (current.id !== requested.id) throw new Error('Нельзя изменить ID существующей доски.');
+      if (current.id !== requested.id) throw new Error('The ID of an existing board cannot be changed.');
       // Missing known overrides means “inherit the plugin default”, unlike future metadata.
       for (const key of ['tasksFolder', 'attachmentsFolder'])
         if (!Object.prototype.hasOwnProperty.call(requested, key)) delete current[key];

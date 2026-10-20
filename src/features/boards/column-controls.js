@@ -23,12 +23,12 @@ function columnColors(parent, column, onChange) {
     );
     swatch.style.setProperty('--swatch', value);
     swatch.dataset.color = value;
-    swatch.setAttribute('aria-label', 'Цвет ' + value);
+    swatch.setAttribute('aria-label', 'Color ' + value);
   }
   const custom = el(palette, 'input', 'pb-color-custom');
   custom.type = 'color';
   custom.value = column.color;
-  custom.setAttribute('aria-label', 'Свой цвет');
+  custom.setAttribute('aria-label', 'Custom color');
   custom.oninput = () => {
     column.color = custom.value;
     paint();

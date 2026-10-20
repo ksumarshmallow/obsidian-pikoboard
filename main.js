@@ -150,12 +150,6 @@ class PikoBoard extends Plugin {
     return this.persist();
   }
   async initializeStorage() {
-    // Existing installations keep their chosen black/purple appearance.
-    // A clean installation follows Obsidian unless the user selects Piko.
-    if (this.data.settings && this.data.settings.appearance === undefined) {
-      this.data.settings.appearance = 'piko';
-      await this.persist();
-    }
     if (!this.data.settings) {
       const legacyPath = this.app.vault.configDir + '/plugins/tasknotes/data.json';
       let legacy = {};
@@ -1381,7 +1375,7 @@ function folderPath(value) {
     path.startsWith('/') ||
     path.split('/').some((p) => !p || p.startsWith('.') || /[:*?"<>|\u0000-\u001f]/.test(p))
   )
-    throw new Error('Укажите папку внутри хранилища, например «Задачи».');
+    throw new Error('Choose a folder inside the vault, for example “Tasks”.');
   return path;
 }
 function settingsFrom(saved = {}) {
@@ -1404,7 +1398,7 @@ function settingsFrom(saved = {}) {
       ? Number(result.archiveDays)
       : 7;
   result.completedStatuses = [...new Set(['done', ...strings(result.completedStatuses)])];
-  result.appearance = result.appearance === 'piko' ? 'piko' : 'obsidian';
+  result.appearance = ['piko', 'piko-light'].includes(result.appearance) ? result.appearance : 'obsidian';
   return result;
 }
 function migrateSettings(legacy = {}) {
@@ -1781,42 +1775,42 @@ function object(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 function folderPath(value) {
-  if (typeof value !== 'string') throw new Error('Папка должна быть указана текстом.');
-  if (/[\u0000-\u001f\u007f]/.test(value)) throw new Error('Путь содержит недопустимые символы.');
+  if (typeof value !== 'string') throw new Error('Enter a folder path as text.');
+  if (/[\u0000-\u001f\u007f]/.test(value)) throw new Error('The path contains invalid characters.');
   const path = value.trim().replace(/\\/g, '/').replace(/\/$/, '');
   if (!path) return '';
   if (
     path.startsWith('/') ||
     path.split('/').some((part) => !part || part.startsWith('.') || /[:*?"<>|]/.test(part))
   )
-    throw new Error('Укажите папку внутри хранилища, без скрытых папок и «..».');
+    throw new Error('Choose a folder inside the vault without hidden folders or “..”.');
   return path;
 }
 function identifier(value, name) {
   if (typeof value !== 'string' || !/^[a-z0-9][a-z0-9_-]{0,159}$/i.test(value))
-    throw new Error(`Некорректный ID ${name}.`);
+    throw new Error(`Invalid ${name} ID.`);
   return value;
 }
 function normalizeBoard(input) {
-  if (!object(input)) throw new Error('Некорректный файл доски.');
-  const board = { ...input, id: identifier(input.id, 'доски') };
+  if (!object(input)) throw new Error('Invalid board file.');
+  const board = { ...input, id: identifier(input.id, 'board') };
   if (!Array.isArray(input.columns) || !input.columns.length || input.columns.length > 30)
-    throw new Error('На доске должно быть от 1 до 30 столбцов.');
+    throw new Error('A board must have 1 to 30 columns.');
   const seen = new Set();
   board.columns = input.columns.map((inputColumn) => {
-    if (!object(inputColumn)) throw new Error('Некорректный столбец.');
-    const column = { ...inputColumn, value: identifier(inputColumn.value, 'столбца') };
-    if (seen.has(column.value)) throw new Error('ID столбцов не должны повторяться.');
+    if (!object(inputColumn)) throw new Error('Invalid column.');
+    const column = { ...inputColumn, value: identifier(inputColumn.value, 'column') };
+    if (seen.has(column.value)) throw new Error('Column IDs must be unique.');
     seen.add(column.value);
     if (typeof column.label !== 'string' || !column.label.trim())
-      throw new Error('Укажите название столбца.');
+      throw new Error('Enter a column name.');
     column.label = column.label.trim();
     column.kind ??= 'todo';
     if (!['todo', 'active', 'done'].includes(column.kind))
-      throw new Error('Неизвестный тип столбца.');
+      throw new Error('Unknown column role.');
     column.color ??= '#a7a1db';
     if (typeof column.color !== 'string' || !/^#[a-f\d]{3}(?:[a-f\d]{3})?$/i.test(column.color))
-      throw new Error('Цвет столбца должен быть в формате #RRGGBB.');
+      throw new Error('Use #RRGGBB for the column color.');
     column.color = column.color.toLowerCase();
     if (column.color.length === 4)
       column.color = '#' + [...column.color.slice(1)].map((c) => c + c).join('');
@@ -1827,10 +1821,10 @@ function normalizeBoard(input) {
       column.opacity < 0 ||
       column.opacity > 1
     )
-      throw new Error('Интенсивность цвета должна быть от 0 до 1.');
+      throw new Error('Color opacity must be between 0 and 1.');
     column.icon ??= '';
     if (typeof column.icon !== 'string' || column.icon.length > 80)
-      throw new Error('Некорректная иконка столбца.');
+      throw new Error('Invalid column icon.');
     column.icon = column.icon.trim();
     return column;
   });
@@ -1843,7 +1837,7 @@ function parseBoard(text) {
   try {
     data = JSON.parse(String(text).replace(/^\uFEFF/, ''));
   } catch (_) {
-    throw new Error('Не удалось прочитать файл доски: некорректный JSON.');
+    throw new Error('The board file could not be read. Its JSON is invalid.');
   }
   return normalizeBoard(data);
 }
@@ -1862,7 +1856,7 @@ function copyRecord(record) {
 }
 function boardFile(file) {
   if (!file || file.extension !== EXTENSION)
-    throw new Error('Выберите файл доски с расширением .pikoboard.');
+    throw new Error('Choose a .pikoboard file.');
 }
 
 class BoardStore {
@@ -1895,12 +1889,12 @@ class BoardStore {
           if (existing) {
             errors.push({
               path: existing.file.path,
-              error: new Error('Этот ID используется несколькими досками.'),
+              error: new Error('Multiple boards use this ID.'),
             });
             next.delete(board.id);
           }
           duplicates.add(board.id);
-          throw new Error('Этот ID используется несколькими досками.');
+          throw new Error('Multiple boards use this ID.');
         }
         next.set(board.id, { file, board });
       } catch (error) {
@@ -1933,7 +1927,7 @@ class BoardStore {
     const failed = this.errors.find((entry) => entry.path === file.path);
     if (failed) throw failed.error;
     const record = [...this.cache.values()].find((entry) => entry.file.path === file.path);
-    if (!record) throw new Error('Доска не найдена.');
+    if (!record) throw new Error('Board not found.');
     return copyRecord(record);
   }
   create(input) {
@@ -1942,21 +1936,21 @@ class BoardStore {
     return work;
   }
   async createFile({ title, folder = '', id, ...options }) {
-    if (typeof title !== 'string' || !title.trim()) throw new Error('Введите название доски.');
+    if (typeof title !== 'string' || !title.trim()) throw new Error('Enter a board name.');
     if (/[\u0000-\u001f\u007f]/.test(title))
-      throw new Error('Название содержит недопустимые символы.');
-    if (title.trim().startsWith('.')) throw new Error('Введите название без скрытого пути.');
+      throw new Error('The name contains invalid characters.');
+    if (title.trim().startsWith('.')) throw new Error('Enter a name without a hidden path.');
     const safe = title
       .trim()
       .replace(/[\\/:*?"<>|\[\]#^]/g, ' ')
       .replace(/^\.+|\.+$/g, '')
       .trim()
       .slice(0, 140);
-    if (!safe || safe.startsWith('.')) throw new Error('Введите название без скрытого пути.');
+    if (!safe || safe.startsWith('.')) throw new Error('Enter a name without a hidden path.');
     const base = folderPath(folder),
       board = makeBoard({ ...options, ...(id !== undefined ? { id } : {}) });
     await this.list();
-    if (this.cache.has(board.id)) throw new Error('Доска с таким ID уже существует.');
+    if (this.cache.has(board.id)) throw new Error('A board with this ID already exists.');
     // Duplicate invalid identities are excluded from cache but still reserve their ID.
     for (const issue of this.errors) {
       const file = this.app.vault.getAbstractFileByPath(issue.path);
@@ -1967,14 +1961,14 @@ class BoardStore {
       } catch (_) {
         continue;
       }
-      if (existing.id === board.id) throw new Error('Доска с таким ID уже существует.');
+      if (existing.id === board.id) throw new Error('A board with this ID already exists.');
     }
     let current = '';
     for (const part of base.split('/').filter(Boolean)) {
       current = current ? current + '/' + part : part;
       const found = this.app.vault.getAbstractFileByPath(current);
       if (found && typeof found.extension === 'string')
-        throw new Error('Путь к папке занят файлом.');
+        throw new Error('A file already exists at this folder path.');
       if (!found) await this.app.vault.createFolder(current);
     }
     for (let n = 1; ; n++) {
@@ -1999,10 +1993,10 @@ class BoardStore {
     await this.app.vault.process(file, (text) => {
       if (expectedText !== undefined && text !== expectedText)
         throw new Error(
-          'Доска уже изменена. Откройте настройки заново, чтобы сохранить изменения.',
+          'The board has changed. Reopen settings before saving your changes.',
         );
       const current = parseBoard(text);
-      if (current.id !== requested.id) throw new Error('Нельзя изменить ID существующей доски.');
+      if (current.id !== requested.id) throw new Error('The ID of an existing board cannot be changed.');
       // Missing known overrides means “inherit the plugin default”, unlike future metadata.
       for (const key of ['tasksFolder', 'attachmentsFolder'])
         if (!Object.prototype.hasOwnProperty.call(requested, key)) delete current[key];
@@ -2755,16 +2749,16 @@ class CreateBoardModal extends Modal {
   onOpen() {
     this.modalEl.addClass('pb-config-modal');
     this.contentEl.addClass('pikoboard');
-    el(this.contentEl, 'h2', '', 'Новая доска');
+    el(this.contentEl, 'h2', '', 'New board');
     const form = el(this.contentEl, 'form', 'pb-config-form');
-    const name = configInput(form, 'Название', 'Моя доска');
-    const folder = configInput(form, 'Папка', this.folder === '/' ? '' : this.folder);
-    folder.placeholder = 'Корень хранилища';
+    const name = configInput(form, 'Name', 'My board');
+    const folder = configInput(form, 'Folder', this.folder === '/' ? '' : this.folder);
+    folder.placeholder = 'Vault root';
     const error = el(form, 'div', 'pb-error');
     error.setAttribute('role', 'alert');
     const actions = el(form, 'div', 'pb-config-actions');
-    button(actions, 'Отмена', () => this.close());
-    const save = button(actions, 'Создать доску', () => form.requestSubmit(), 'pb-new');
+    button(actions, 'Cancel', () => this.close());
+    const save = button(actions, 'Create board', () => form.requestSubmit(), 'pb-new');
     form.onsubmit = async (event) => {
       event.preventDefault();
       if (save.disabled) return;
@@ -3101,7 +3095,7 @@ const BoardBase = (Base) =>
           this.columns.set(s.value, { col, header, count, list });
           if (editable && s.value !== '__unknown__') this.bindColumnDrag(header, col, s.value);
           if (this.boardConfig && !this.archive && s.value !== '__unknown__')
-            icon(header, 'ellipsis', 'Настроить столбец ' + s.label, () =>
+            icon(header, 'ellipsis', 'Edit column ' + s.label, () =>
               new BoardSettingsModal(this.plugin, this.file, s.value).open(),
             );
           if (!this.archive && s.value !== '__unknown__')
@@ -3235,12 +3229,12 @@ const BoardBase = (Base) =>
             ...(this.file
               ? [
                   {
-                    label: 'Настройки доски',
+                    label: 'Board settings',
                     icon: 'settings-2',
                     action: () => new BoardSettingsModal(this.plugin, this.file).open(),
                   },
                   {
-                    label: 'Папки доски',
+                    label: 'Board folders',
                     icon: 'folder',
                     action: () => new BoardStorageModal(this.plugin, this.file).open(),
                   },
@@ -4016,11 +4010,11 @@ class BoardEditModal extends Modal {
       el(this.contentEl, 'p', 'pb-error', errorMessage(e));
     }
   }
-  actions(label = 'Сохранить') {
+  actions(label = 'Save') {
     this.error = el(this.contentEl, 'div', 'pb-error');
     this.error.setAttribute('role', 'alert');
     const actions = el(this.contentEl, 'div', 'pb-config-actions');
-    button(actions, 'Отмена', () => this.close());
+    button(actions, 'Cancel', () => this.close());
     this.saveButton = button(actions, label, () => this.save(), 'pb-new');
   }
   async save() {
@@ -4044,7 +4038,7 @@ class BoardEditModal extends Modal {
         const tasks = (await this.plugin.tasks()).filter((t) => t.board === next.id);
         if (removed.some((c) => tasks.some((t) => t.status === c.value)))
           throw new Error(
-            'В столбце есть задачи, включая архив. Сначала перенесите их в другой столбец.',
+            'This column contains tasks, including archived tasks. Move them to another column first.',
           );
       }
       await this.plugin.boards.save(this.file, next, this.original);
@@ -4069,7 +4063,7 @@ class BoardEditModal extends Modal {
 class AddColumnModal extends BoardEditModal {
   render() {
     this.modalEl.addClass('pb-add-column-modal');
-    el(this.contentEl, 'h2', '', 'Новый столбец');
+    el(this.contentEl, 'h2', '', 'New column');
     const form = el(this.contentEl, 'form', 'pb-config-form');
     this.column = {
       value: crypto.randomUUID(),
@@ -4085,14 +4079,14 @@ class AddColumnModal extends BoardEditModal {
     };
     symbolPicker(preview, this.column, paint, this.plugin);
     const name = el(preview, 'input', 'pb-config-column-name');
-    name.placeholder = 'Название столбца';
-    name.setAttribute('aria-label', 'Название столбца');
+    name.placeholder = 'Column name';
+    name.setAttribute('aria-label', 'Column name');
     name.oninput = () => {
       this.column.label = name.value;
     };
     columnColors(form, this.column, paint);
     paint();
-    this.actions('Добавить');
+    this.actions('Add');
     form.onsubmit = (e) => {
       e.preventDefault();
       this.save();
@@ -4102,14 +4096,14 @@ class AddColumnModal extends BoardEditModal {
   async save() {
     if (this.saving) return false;
     if (!this.column.label.trim()) {
-      this.error.textContent = 'Введите название столбца.';
+      this.error.textContent = 'Enter a column name.';
       return false;
     }
     if (
       this.board.columns.length >= 30 &&
       !this.board.columns.some((c) => c.value === this.column.value)
     ) {
-      this.error.textContent = 'На доске уже 30 столбцов.';
+      this.error.textContent = 'This board already has 30 columns.';
       return false;
     }
     // Keep the pending column only once when retrying after an error.
@@ -4141,7 +4135,7 @@ class BoardSettingsModal extends BoardEditModal {
   render() {
     this.onClose();
     this.contentEl.replaceChildren();
-    el(this.contentEl, 'h2', '', 'Столбцы');
+    el(this.contentEl, 'h2', '', 'Columns');
     const list = el(this.contentEl, 'div', 'pb-config-columns');
     let focusInput;
     for (const [index, c] of this.board.columns.entries()) {
@@ -4153,11 +4147,11 @@ class BoardSettingsModal extends BoardEditModal {
       symbolPicker(top, c, paint, this.plugin);
       const title = el(top, 'input', 'pb-config-column-name');
       title.value = c.label;
-      title.setAttribute('aria-label', 'Название столбца ' + (index + 1));
+      title.setAttribute('aria-label', 'Column name ' + (index + 1));
       title.oninput = () => {
         c.label = title.value;
       };
-      const remove = icon(top, 'trash-2', 'Удалить столбец ' + c.label, async () => {
+      const remove = icon(top, 'trash-2', 'Delete column ' + c.label, async () => {
         if (this.saving || this.removing) return;
         this.removing = true;
         try {
@@ -4166,7 +4160,7 @@ class BoardSettingsModal extends BoardEditModal {
             (t) => t.board === this.board.id && t.status === c.value,
           ).length;
           if (count) {
-            this.error.textContent = `В «${c.label}» есть задачи: ${count}, включая архив. Сначала перенесите их в другой столбец.`;
+            this.error.textContent = `“${c.label}” contains ${count} tasks, including archived tasks. Move them to another column first.`;
             return;
           }
           this.board.columns = this.board.columns.filter((x) => x.value !== c.value);
@@ -4184,20 +4178,20 @@ class BoardSettingsModal extends BoardEditModal {
       const color = el(controls, 'input', 'pb-color-custom');
       color.type = 'color';
       color.value = c.color;
-      color.setAttribute('aria-label', 'Цвет столбца ' + c.label);
+      color.setAttribute('aria-label', 'Column color ' + c.label);
       color.oninput = () => {
         c.color = color.value;
         paint();
       };
       const label = el(controls, 'label', 'pb-opacity-control');
-      el(label, 'span', '', 'Прозрачность');
+      el(label, 'span', '', 'Transparency');
       const range = el(label, 'input', 'pb-opacity-range');
       range.type = 'range';
       range.min = '0';
       range.max = '100';
       range.step = '1';
       range.value = String(Math.round((1 - c.opacity) * 100));
-      range.setAttribute('aria-label', 'Прозрачность фона ' + c.label);
+      range.setAttribute('aria-label', 'Background transparency ' + c.label);
       const amount = el(label, 'output', '', range.value + '%');
       range.oninput = () => {
         c.opacity = (100 - Number(range.value)) / 100;
@@ -4214,11 +4208,11 @@ class BoardSettingsModal extends BoardEditModal {
 class BoardStorageModal extends BoardEditModal {
   render() {
     this.modalEl.addClass('pb-storage-modal');
-    el(this.contentEl, 'h2', '', 'Папки доски');
+    el(this.contentEl, 'h2', '', 'Board folders');
     const form = el(this.contentEl, 'form', 'pb-config-form');
     for (const [key, label] of [
-      ['tasksFolder', 'Новые задачи'],
-      ['attachmentsFolder', 'Вложения'],
+      ['tasksFolder', 'New tasks'],
+      ['attachmentsFolder', 'Attachments'],
     ]) {
       const group = el(form, 'div', 'pb-folder-setting');
       const top = el(group, 'div', 'pb-folder-heading');
@@ -4227,19 +4221,19 @@ class BoardStorageModal extends BoardEditModal {
       const row = el(group, 'div', 'pb-folder-input');
       const input = el(row, 'input', 'pb-config-input');
       input.setAttribute('aria-label', label);
-      input.placeholder = 'Корень хранилища';
-      const reset = icon(row, 'undo-2', 'Вернуть общую папку', () => {
+      input.placeholder = 'Vault root';
+      const reset = icon(row, 'undo-2', 'Use default folder', () => {
         delete this.board[key];
         paint();
       });
       const paint = () => {
         input.value = this.board[key] ?? this.plugin.settings[key] ?? '';
-        badge.textContent = this.board[key] === undefined ? 'Общая папка' : 'Для этой доски';
+        badge.textContent = this.board[key] === undefined ? 'Default folder' : 'This board';
         reset.hidden = this.board[key] === undefined;
       };
       input.oninput = () => {
         this.board[key] = input.value.trim();
-        badge.textContent = 'Для этой доски';
+        badge.textContent = 'This board';
         reset.hidden = false;
       };
       paint();
@@ -4282,12 +4276,12 @@ function columnColors(parent, column, onChange) {
     );
     swatch.style.setProperty('--swatch', value);
     swatch.dataset.color = value;
-    swatch.setAttribute('aria-label', 'Цвет ' + value);
+    swatch.setAttribute('aria-label', 'Color ' + value);
   }
   const custom = el(palette, 'input', 'pb-color-custom');
   custom.type = 'color';
   custom.value = column.color;
-  custom.setAttribute('aria-label', 'Свой цвет');
+  custom.setAttribute('aria-label', 'Custom color');
   custom.oninput = () => {
     column.color = custom.value;
     paint();
@@ -4317,7 +4311,7 @@ function symbolPicker(parent, column, onChange, plugin) {
   const wrap = el(parent, 'div', 'pb-symbol-wrap');
   let popup = null, cleanup = () => {};
   const trigger = button(wrap, '', () => popup ? close(true) : open(), 'pb-symbol-trigger');
-  trigger.setAttribute('aria-label', 'Выбрать значок');
+  trigger.setAttribute('aria-label', 'Choose icon');
   trigger.setAttribute('aria-haspopup', 'dialog');
   trigger.setAttribute('aria-expanded', 'false');
   const paint = () => {
@@ -4343,7 +4337,7 @@ function symbolPicker(parent, column, onChange, plugin) {
       return true;
     } catch (_) {
       if (plugin.data.iconPicker === next) plugin.data.iconPicker = previous;
-      new Notice('Не удалось сохранить избранное и недавние иконки.');
+      new Notice('Could not save favorite and recent icons.');
       return false;
     }
   }
@@ -4367,7 +4361,7 @@ function symbolPicker(parent, column, onChange, plugin) {
     const openedPopup = popup;
     popup.dataset.fitViewport = 'true';
     popup.setAttribute('role', 'dialog');
-    popup.setAttribute('aria-label', 'Значок столбца');
+    popup.setAttribute('aria-label', 'Column icon');
     trigger.setAttribute('aria-expanded', 'true');
     const doc = trigger.ownerDocument;
     const searchRow = el(popup, 'div', 'pb-symbol-search');
@@ -4375,11 +4369,11 @@ function symbolPicker(parent, column, onChange, plugin) {
     const search = el(searchRow, 'input');
     search.type = 'text';
     search.value = '';
-    search.placeholder = 'Найти иконку…';
-    search.setAttribute('aria-label', 'Найти иконку');
+    search.placeholder = 'Search icons…';
+    search.setAttribute('aria-label', 'Search icons');
     search.setAttribute('autocomplete', 'off');
     search.spellcheck = false;
-    const clear = icon(searchRow, 'x', 'Очистить поиск', () => {
+    const clear = icon(searchRow, 'x', 'Clear search', () => {
       search.value = '';
       draw();
       search.focus();
@@ -4390,25 +4384,25 @@ function symbolPicker(parent, column, onChange, plugin) {
       tab = value;
       draw();
     };
-    for (const [value, label] of [['all', 'Все'], ['favorites', 'Избранное'], ['recent', 'Недавние']]) {
+    for (const [value, label] of [['all', 'All'], ['favorites', 'Favorites'], ['recent', 'Recent']]) {
       const b = button(tabs, label, () => changeTab(value));
-      b.setAttribute('aria-label', value === 'favorites' ? 'Избранные иконки' : label + ' иконки');
+      b.setAttribute('aria-label', value === 'favorites' ? 'Favorite icons' : label + ' icons');
       tabButtons.set(value, b);
     }
-    const emojiTab = icon(tabs, 'smile', 'Эмодзи', () => changeTab('emoji'));
+    const emojiTab = icon(tabs, 'smile', 'Emoji', () => changeTab('emoji'));
     tabButtons.set('emoji', emojiTab);
     const results = el(popup, 'div', 'pb-symbol-results');
     const grid = el(results, 'div', 'pb-symbol-grid');
     grid.setAttribute('role', 'group');
-    grid.setAttribute('aria-label', 'Иконки');
+    grid.setAttribute('aria-label', 'Icons');
     const empty = el(results, 'div', 'pb-symbol-empty');
-    const more = button(results, 'Ещё иконки', () => appendPage(), 'pb-symbol-more');
+    const more = button(results, 'More icons', () => appendPage(), 'pb-symbol-more');
     const custom = el(popup, 'form', 'pb-symbol-custom');
     const entry = el(custom, 'input');
-    entry.placeholder = 'Свой эмодзи';
-    entry.setAttribute('aria-label', 'Свой эмодзи');
+    entry.placeholder = 'Custom emoji';
+    entry.setAttribute('aria-label', 'Custom emoji');
     entry.maxLength = 16;
-    const use = icon(custom, 'arrow-up', 'Выбрать эмодзи', () => custom.requestSubmit());
+    const use = icon(custom, 'arrow-up', 'Choose emoji', () => custom.requestSubmit());
     use.disabled = true;
     const valid = () => /\p{Extended_Pictographic}|\p{Regional_Indicator}/u.test(entry.value);
     entry.oninput = () => { use.disabled = !valid(); };
@@ -4419,7 +4413,7 @@ function symbolPicker(parent, column, onChange, plugin) {
     const footer = el(popup, 'div', 'pb-symbol-footer');
     const preview = el(footer, 'span', 'pb-symbol-preview');
     const name = el(footer, 'span', 'pb-symbol-name');
-    const favorite = icon(footer, 'star', 'Добавить в избранное', async () => {
+    const favorite = icon(footer, 'star', 'Add to favorites', async () => {
       if (!active || savingFavorite) return;
       savingFavorite = true;
       favorite.disabled = true;
@@ -4436,7 +4430,7 @@ function symbolPicker(parent, column, onChange, plugin) {
       }
     });
     favorite.classList.add('pb-symbol-favorite');
-    button(popup, 'Без значка', () => select(''), 'pb-symbol-none');
+    button(popup, 'No icon', () => select(''), 'pb-symbol-none');
 
     function previewIcon(item) {
       active = item;
@@ -4445,7 +4439,7 @@ function symbolPicker(parent, column, onChange, plugin) {
       name.textContent = item?.label || '';
       name.setAttribute('title', item ? item.id : '');
       const saved = item && preferences().favorites.includes(item.id);
-      favorite.setAttribute('aria-label', (saved ? 'Убрать из избранного' : 'Добавить в избранное') + (item ? ': ' + item.label : ''));
+      favorite.setAttribute('aria-label', (saved ? 'Remove from favorites' : 'Add to favorites') + (item ? ' – ' + item.label : ''));
       favorite.setAttribute('aria-pressed', String(!!saved));
       favorite.disabled = !item || savingFavorite;
     }
@@ -4481,9 +4475,9 @@ function symbolPicker(parent, column, onChange, plugin) {
       appendPage();
       tabButtons.forEach((b, value) => b.setAttribute('aria-pressed', String(value === tab)));
       empty.hidden = items.length > 0;
-      empty.textContent = search.value.trim() && tab !== 'emoji' ? 'Ничего не найдено'
-        : tab === 'favorites' ? 'Пока нет избранного'
-        : tab === 'recent' ? 'Пока нет недавних иконок' : 'Нет доступных иконок';
+      empty.textContent = search.value.trim() && tab !== 'emoji' ? 'No icons found'
+        : tab === 'favorites' ? 'No favorites yet'
+        : tab === 'recent' ? 'No recent icons yet' : 'No icons available';
       custom.hidden = tab !== 'emoji';
       popup.classList.toggle('is-emoji', tab === 'emoji');
       footer.hidden = tab === 'emoji';
@@ -4566,12 +4560,12 @@ run: (module, exports, require) => {
 'use strict';
 
 const LABELS = {
-  inbox: 'Входящие', 'circle-dashed': 'В процессе', 'circle-check': 'Готово',
-  clock: 'Часы', star: 'Звезда', flag: 'Флаг', bookmark: 'Закладка',
-  lightbulb: 'Идея', 'flask-conical': 'Исследование', rocket: 'Ракета',
-  heart: 'Сердце', coffee: 'Кофе', 'briefcase-business': 'Работа', house: 'Дом',
-  'book-open': 'Книга', plane: 'Путешествие', 'message-circle': 'Сообщение',
-  pause: 'Пауза', eye: 'Проверка', archive: 'Архив',
+  inbox: 'Inbox', 'circle-dashed': 'In progress', 'circle-check': 'Done',
+  clock: 'Clock', star: 'Star', flag: 'Flag', bookmark: 'Bookmark',
+  lightbulb: 'Idea', 'flask-conical': 'Research', rocket: 'Rocket',
+  heart: 'Heart', coffee: 'Coffee', 'briefcase-business': 'Work', house: 'Home',
+  'book-open': 'Book', plane: 'Travel', 'message-circle': 'Message',
+  pause: 'Pause', eye: 'Review', archive: 'Archive',
 };
 // Search hints supplement the icon names supplied by Obsidian; no external icon data.
 const KEYWORDS = {
@@ -5523,10 +5517,11 @@ class PikoBoardSettings extends PluginSettingTab {
     const save = (patch) =>
       this.plugin.saveSettings(patch).catch((e) => new Notice(errorMessage(e)));
     new Setting(containerEl)
-      .setName('Оформление')
+      .setName('Appearance')
       .addDropdown((field) => {
-        field.addOption('obsidian', 'Как в Obsidian');
-        field.addOption('piko', 'Piko — тёмная');
+        field.addOption('obsidian', 'System');
+        field.addOption('piko', 'pikoboard-dark');
+        field.addOption('piko-light', 'pikoboard-light');
         field.setValue(this.plugin.settings.appearance);
         field.onChange(async (appearance) => {
           field.selectEl.disabled = true;
@@ -5541,17 +5536,17 @@ class PikoBoardSettings extends PluginSettingTab {
         });
       });
     for (const [key, label] of [
-      ['boardsFolder', 'Папка новых досок'],
-      ['tasksFolder', 'Папка новых задач'],
-      ['attachmentsFolder', 'Папка вложений'],
-      ['materialsFolder', 'Папка исследований'],
-      ['projectsFolder', 'Папка проектов'],
+      ['boardsFolder', 'New boards folder'],
+      ['tasksFolder', 'New tasks folder'],
+      ['attachmentsFolder', 'Attachments folder'],
+      ['materialsFolder', 'Research folder'],
+      ['projectsFolder', 'Projects folder'],
     ])
       new Setting(containerEl)
         .setName(label)
-        .setDesc('Внутри хранилища. Пустое поле — корень. Существующие файлы не переносятся.')
+        .setDesc('Inside the vault. Leave empty for the vault root. Existing files stay in place.')
         .addText((field) => {
-          field.setValue(this.plugin.settings[key]).setPlaceholder('Корень хранилища');
+          field.setValue(this.plugin.settings[key]).setPlaceholder('Vault root');
           field.inputEl.addEventListener('change', async () => {
             try {
               await this.plugin.saveSettings({ [key]: field.getValue().trim() });
@@ -5562,14 +5557,14 @@ class PikoBoardSettings extends PluginSettingTab {
           });
         });
     new Setting(containerEl)
-      .setName('Архивировать завершённые задачи')
-      .setDesc('Файлы сохраняются. Задачи можно вернуть из архива.')
+      .setName('Archive completed tasks')
+      .setDesc('Task files are kept. You can restore tasks from the archive.')
       .addToggle((toggle) =>
         toggle
           .setValue(this.plugin.settings.autoArchive)
           .onChange((value) => save({ autoArchive: value })),
       );
-    new Setting(containerEl).setName('Дней до архивации').addText((field) => {
+    new Setting(containerEl).setName('Days before archiving').addText((field) => {
       field.setValue(String(this.plugin.settings.archiveDays));
       field.inputEl.type = 'number';
       field.inputEl.min = '1';
@@ -5583,8 +5578,8 @@ class PikoBoardSettings extends PluginSettingTab {
       });
     });
     new Setting(containerEl)
-      .setName('Доска')
-      .addButton((b) => b.setButtonText('Создать доску').onClick(() => this.plugin.newBoard()));
+      .setName('Board')
+      .addButton((b) => b.setButtonText('Create board').onClick(() => this.plugin.newBoard()));
   }
 }
 

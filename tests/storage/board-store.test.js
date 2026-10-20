@@ -219,9 +219,9 @@ test('copied board IDs cannot silently share tasks or be claimed by another new 
   assert.equal(result[0].board.id, 'other');
   assert.equal(f.store.errors.length, 2);
   assert.equal(f.store.get('board-one'), null);
-  await assert.rejects(f.store.load(a), /несколькими/);
-  await assert.rejects(f.store.load(b), /несколькими/);
-  await assert.rejects(f.store.create({ title: 'Third', id: 'board-one' }), /уже существует/);
+  await assert.rejects(f.store.load(a), /Multiple boards/);
+  await assert.rejects(f.store.load(b), /Multiple boards/);
+  await assert.rejects(f.store.create({ title: 'Third', id: 'board-one' }), /already exists/);
 });
 
 test('save preserves newer unknown root and column fields when a caller only supplies known values', async () => {
@@ -246,7 +246,7 @@ test('save rejects a stale editor without overwriting changes, including edits o
   next.columns[0].label = 'Stale update';
   const external = { ...parseBoard(baseline), tasksFolder: 'New/Tasks' };
   f.disk.set(file.path, serializeBoard(external));
-  await assert.rejects(f.store.save(file, next, baseline), /уже изменена/);
+  await assert.rejects(f.store.save(file, next, baseline), /has changed/);
   assert.equal(f.disk.get(file.path), serializeBoard(external));
 });
 

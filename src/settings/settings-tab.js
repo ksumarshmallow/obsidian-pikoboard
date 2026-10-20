@@ -13,10 +13,11 @@ class PikoBoardSettings extends PluginSettingTab {
     const save = (patch) =>
       this.plugin.saveSettings(patch).catch((e) => new Notice(errorMessage(e)));
     new Setting(containerEl)
-      .setName('Оформление')
+      .setName('Appearance')
       .addDropdown((field) => {
-        field.addOption('obsidian', 'Как в Obsidian');
-        field.addOption('piko', 'Piko — тёмная');
+        field.addOption('obsidian', 'System');
+        field.addOption('piko', 'pikoboard-dark');
+        field.addOption('piko-light', 'pikoboard-light');
         field.setValue(this.plugin.settings.appearance);
         field.onChange(async (appearance) => {
           field.selectEl.disabled = true;
@@ -31,17 +32,17 @@ class PikoBoardSettings extends PluginSettingTab {
         });
       });
     for (const [key, label] of [
-      ['boardsFolder', 'Папка новых досок'],
-      ['tasksFolder', 'Папка новых задач'],
-      ['attachmentsFolder', 'Папка вложений'],
-      ['materialsFolder', 'Папка исследований'],
-      ['projectsFolder', 'Папка проектов'],
+      ['boardsFolder', 'New boards folder'],
+      ['tasksFolder', 'New tasks folder'],
+      ['attachmentsFolder', 'Attachments folder'],
+      ['materialsFolder', 'Research folder'],
+      ['projectsFolder', 'Projects folder'],
     ])
       new Setting(containerEl)
         .setName(label)
-        .setDesc('Внутри хранилища. Пустое поле — корень. Существующие файлы не переносятся.')
+        .setDesc('Inside the vault. Leave empty for the vault root. Existing files stay in place.')
         .addText((field) => {
-          field.setValue(this.plugin.settings[key]).setPlaceholder('Корень хранилища');
+          field.setValue(this.plugin.settings[key]).setPlaceholder('Vault root');
           field.inputEl.addEventListener('change', async () => {
             try {
               await this.plugin.saveSettings({ [key]: field.getValue().trim() });
@@ -52,14 +53,14 @@ class PikoBoardSettings extends PluginSettingTab {
           });
         });
     new Setting(containerEl)
-      .setName('Архивировать завершённые задачи')
-      .setDesc('Файлы сохраняются. Задачи можно вернуть из архива.')
+      .setName('Archive completed tasks')
+      .setDesc('Task files are kept. You can restore tasks from the archive.')
       .addToggle((toggle) =>
         toggle
           .setValue(this.plugin.settings.autoArchive)
           .onChange((value) => save({ autoArchive: value })),
       );
-    new Setting(containerEl).setName('Дней до архивации').addText((field) => {
+    new Setting(containerEl).setName('Days before archiving').addText((field) => {
       field.setValue(String(this.plugin.settings.archiveDays));
       field.inputEl.type = 'number';
       field.inputEl.min = '1';
@@ -73,8 +74,8 @@ class PikoBoardSettings extends PluginSettingTab {
       });
     });
     new Setting(containerEl)
-      .setName('Доска')
-      .addButton((b) => b.setButtonText('Создать доску').onClick(() => this.plugin.newBoard()));
+      .setName('Board')
+      .addButton((b) => b.setButtonText('Create board').onClick(() => this.plugin.newBoard()));
   }
 }
 

@@ -145,12 +145,6 @@ class PikoBoard extends Plugin {
     return this.persist();
   }
   async initializeStorage() {
-    // Existing installations keep their chosen black/purple appearance.
-    // A clean installation follows Obsidian unless the user selects Piko.
-    if (this.data.settings && this.data.settings.appearance === undefined) {
-      this.data.settings.appearance = 'piko';
-      await this.persist();
-    }
     if (!this.data.settings) {
       const legacyPath = this.app.vault.configDir + '/plugins/tasknotes/data.json';
       let legacy = {};
