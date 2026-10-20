@@ -1536,7 +1536,8 @@ body:is([data-pikoboard-appearance="piko"], [data-pikoboard-appearance="piko-lig
 }
 .pikoboard .pb-create-row {
   display: flex;
-  align-items: flex-end;
+  flex-direction: column;
+  align-items: stretch;
   gap: 6px;
   min-width: 0;
   margin: 6px 0 9px;
@@ -1544,6 +1545,52 @@ body:is([data-pikoboard-appearance="piko"], [data-pikoboard-appearance="piko-lig
   background: transparent;
   border: 0;
   border-radius: 0;
+}
+.pikoboard .pb-create-entry {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+}
+.pikoboard .pb-create-tools {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+}
+.pikoboard .pb-template-choice {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  min-width: 0;
+  max-width: calc(100% - 28px);
+  height: 26px;
+  padding: 3px 5px;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  color: var(--pb-muted);
+  font-size: 12px;
+}
+.pikoboard .pb-template-choice:hover,
+.pikoboard .pb-template-choice:focus-visible {
+  background: var(--pb-accent-soft-hover);
+  color: var(--pb-accent);
+}
+.pikoboard .pb-template-choice span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pikoboard .pb-template-choice svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+}
+.pikoboard .pb-create-tools .pb-icon {
+  width: 24px;
+  height: 24px;
+  padding: 5px;
 }
 .pikoboard .pb-create-input {
   display: block;

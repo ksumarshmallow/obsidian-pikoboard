@@ -24,6 +24,7 @@ class Element {
     this.dataset = {};
     this.className = '';
     this._text = '';
+    this.value = '';
     this.scrollTop = 0;
     this.hidden = false;
     this.style = {};
@@ -75,6 +76,8 @@ class Element {
     return selector.startsWith('.') && this.classes().includes(selector.slice(1))
       ? this : this.parentNode?.closest(selector);
   }
+  scrollIntoView() {}
+  requestSubmit() { return this.onsubmit?.({ preventDefault() {} }); }
   getBoundingClientRect() {
     return { top: 20, bottom: 50, left: 20, right: 160 };
   }
@@ -132,6 +135,8 @@ function fixture(
   },
 ) {
   const components = [];
+  const notices = [];
+  const pickers = [];
   class Component {
     constructor() {
       components.push(this);
@@ -151,9 +156,15 @@ function fixture(
     ItemView: base,
     FileView: base,
     Modal: base,
-    FuzzySuggestModal: base,
+    FuzzySuggestModal: class {
+      setPlaceholder(value) { this.placeholder = value; }
+      open() { pickers.push(this); }
+      onClose() {}
+    },
+    Notice: class { constructor(text) { notices.push(text); } },
     Component,
     TFile: class {},
+    Scope: class { register(modifiers, key, handler) { this.handler = handler; this.modifiers = modifiers; this.key = key; } },
     MarkdownRenderer: { render },
     setIcon(node, name) {
       node.icon = name;
@@ -183,7 +194,7 @@ function fixture(
   };
   const load = createLoader(scope);
   scope.module.exports = { PikoBoard: load('plugin.js'), ...load('features/boards/board-view.js'), ...load('features/journal/next-step.js') };
-  return { ...scope.module.exports, components, document, obs };
+  return { ...scope.module.exports, components, document, obs, notices, pickers };
 }
 function boardFixture(tasks) {
   const f = fixture(),
@@ -911,4 +922,162 @@ test('dragging on all-tasks maps semantic target to the task own board and retai
     'reordering within the aggregate active column retains its exact custom status',
   );
   assert.deepEqual([...plugin.data.order], ['First', 'Second']);
+});
+
+
+function creationFixture(keymap) {
+  const f = fixture();
+  const view = new f.BoardView({}, {});
+  view.app = { keymap };
+  const col = f.document.createElement('section');
+  const list = f.document.createElement('div');
+  const add = f.document.createElement('button');
+  add.className = 'pb-add-task';
+  col.append(list, add);
+  f.document.body.append(col);
+  view.columns = new Map([['open', { col, list }]]);
+  const submissions = [];
+  const template = { path: 'Templates/Research.md', basename: 'Research' };
+  view.plugin = {
+    app: {}, templates: { list: async () => [{ label: 'Research', file: template }] },
+    submitTask: async (...args) => { submissions.push(args); return new f.obs.TFile(); },
+  };
+  view.beginCreate('open');
+  return { ...f, view, col, list, add, submissions, template, row: col.querySelector('.pb-create-row'), input: col.querySelector('.pb-create-input') };
+}
+const keyEvent = (key, extra = {}) => ({ key, preventDefault() {}, stopPropagation() {}, ...extra });
+
+test('quick creation keeps focus and selected template for consecutive tasks, with explicit removal', async () => {
+  const f = creationFixture();
+  assert.equal(f.col.children[0], f.row);
+  assert.equal(f.document.activeElement, f.input);
+  const choice = f.row.querySelector('.pb-template-choice');
+  const selecting = choice.onclick();
+  await tick();
+  assert.equal(f.row._picking, true);
+  const picker = f.pickers.at(-1);
+  picker.onClose();
+  picker.onChooseItem(picker.items[0]);
+  await selecting;
+  assert.equal(f.row._template, f.template);
+  assert.equal(f.document.activeElement, f.input);
+  for (const title of ['First', 'Second']) {
+    f.input.value = title;
+    f.input.oninput();
+    f.input.onkeydown(keyEvent('Enter'));
+    await tick();
+    assert.equal(f.input.value, '');
+    assert.equal(f.document.activeElement, f.input);
+    assert.equal(f.row.hidden, false);
+  }
+  assert.deepEqual(f.submissions.map((x) => [x[0], x[1], x[3]]), [['First', 'open', f.template], ['Second', 'open', f.template]]);
+  f.row.querySelectorAll('button').find((b) => b.getAttribute('aria-label') === 'Убрать шаблон').onclick();
+  assert.equal(f.row._template, null);
+  assert.equal(choice.textContent, 'Шаблон');
+});
+
+test('Escape, empty titles, IME and Shift+Enter do not create tasks; cancelling picker preserves input', async () => {
+  const f = creationFixture();
+  await f.row.requestSubmit();
+  f.input.value = 'Draft';
+  f.input.onkeydown(keyEvent('Enter', { isComposing: true }));
+  f.input.onkeydown(keyEvent('Enter', { shiftKey: true }));
+  assert.equal(f.submissions.length, 0);
+  const selecting = f.row.querySelector('.pb-template-choice').onclick();
+  await tick();
+  f.pickers.at(-1).onClose();
+  await selecting;
+  assert.equal(f.input.value, 'Draft');
+  assert.equal(f.document.activeElement, f.input);
+  f.input.onkeydown(keyEvent('Escape'));
+  assert.equal(f.row.hidden, true);
+  assert.equal(f.document.activeElement, f.add);
+  f.view.beginCreate('open');
+  assert.equal(f.input.value, 'Draft');
+});
+
+test('failed creation retains title and template; repeated Enter during saving creates only once', async () => {
+  const f = creationFixture(), pending = deferred();
+  let calls = 0;
+  f.row._template = f.template;
+  f.input.value = 'Keep me';
+  f.view.plugin.submitTask = async () => { calls++; await pending.promise; throw new Error('Disk full'); };
+  const first = f.row.requestSubmit();
+  await f.row.requestSubmit();
+  assert.equal(calls, 1);
+  assert.equal(f.input.readOnly, true);
+  pending.resolve();
+  await first;
+  assert.equal(f.input.value, 'Keep me');
+  assert.equal(f.row._template, f.template);
+  assert.equal(f.input.readOnly, false);
+  assert.equal(f.document.activeElement, f.input);
+  assert.deepEqual(f.notices, ['Disk full']);
+});
+
+test('template is loaded before file creation and contextual board, column and project take precedence', async () => {
+  const f = fixture();
+  const plugin = Object.create(f.PikoBoard.prototype), received = [];
+  const file = new f.obs.TFile();
+  Object.assign(plugin, {
+    templates: { read: async () => ({ tags: ['research'], details: '## Checklist\n- [ ] Compare' }) },
+    api: () => ({ tasks: { create: async (input) => { received.push(input); return { path: 'New.md' }; } } }),
+    data: { order: ['Existing.md'] }, persist: async () => {}, refresh() {},
+    app: { vault: { getAbstractFileByPath: () => file } },
+  });
+  const view = { boardConfig: { id: 'my-board' }, filters: { project: 'Projects/Study' }, recent: new Set(), refresh: async () => {}, revealNew() {} };
+  assert.equal(await plugin.submitTask('My title', 'review', view, {}), file);
+  assert.equal(received[0].board, 'my-board');
+  assert.equal(received[0].status, 'review');
+  assert.equal(received[0].title, 'My title');
+  assert.equal(received[0].projects[0], '[[Projects/Study]]');
+  assert.equal(received[0].tags[0], 'research');
+  assert.match(received[0].details, /Compare/);
+  assert.deepEqual([...plugin.data.order], ['New.md', 'Existing.md']);
+  plugin.templates.read = async () => { throw new Error('Missing template'); };
+  await assert.rejects(plugin.submitTask('Not created', 'open', view, {}), /Missing template/);
+  assert.equal(received.length, 1);
+});
+
+
+test('Cmd/Ctrl+Enter has a temporary Obsidian scope that is removed on blur and view disposal', async () => {
+  const pushed = [], popped = [], opened = [];
+  const f = creationFixture({ pushScope: (scope) => pushed.push(scope), popScope: (scope) => popped.push(scope) });
+  f.obs.Modal.prototype.open = function () { opened.push(this.file); };
+  f.input.onfocus();
+  f.input.onfocus();
+  assert.equal(pushed.length, 1);
+  assert.equal(pushed[0].modifiers[0], 'Mod');
+  assert.equal(pushed[0].key, 'Enter');
+  // Empty and IME submissions cannot leave a pending open flag behind.
+  pushed[0].handler(keyEvent('Enter', { isComposing: true }));
+  pushed[0].handler(keyEvent('Enter'));
+  f.input.value = 'Ordinary';
+  await f.row.requestSubmit();
+  assert.equal(opened.length, 0);
+  f.input.value = 'Open immediately';
+  pushed[0].handler(keyEvent('Enter'));
+  await tick();
+  assert.equal(opened.length, 1);
+  assert.equal(f.row.hidden, true);
+  assert.equal(popped.length, 1);
+  f.input.onfocus();
+  f.input.onblur();
+  assert.equal(popped.length, 2);
+  f.input.onfocus();
+  f.row._dispose();
+  assert.equal(popped.length, 3);
+});
+
+test('a task stays successfully created if layout persistence fails, without encouraging a duplicate retry', async () => {
+  const f = fixture(), plugin = Object.create(f.PikoBoard.prototype), file = new f.obs.TFile();
+  let creates = 0;
+  Object.assign(plugin, {
+    api: () => ({ tasks: { create: async () => { creates++; return { path: 'Created.md' }; } } }),
+    data: { order: [] }, persist: async () => { throw new Error('Settings disk full'); },
+    refresh() {}, app: { vault: { getAbstractFileByPath: () => file } },
+  });
+  assert.equal(await plugin.submitTask('Created', 'open'), file);
+  assert.equal(creates, 1);
+  assert.match(f.notices[0], /Задача создана/);
 });

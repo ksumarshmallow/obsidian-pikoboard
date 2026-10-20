@@ -13,6 +13,7 @@ const C = require('./domain/tasks.js');
 const S = require('./storage/task-store.js');
 const B = require('./storage/board-store.js');
 const { SavedFilters } = require('./storage/saved-filters.js');
+const { TaskTemplates } = require('./storage/task-templates.js');
 const { renamedProject } = require('./domain/filters.js');
 const { el, icon } = require('./ui/elements.js');
 const { errorMessage } = require('./ui/format.js');
@@ -46,6 +47,7 @@ class PikoBoard extends Plugin {
     this.boards = new B.BoardStore(this.app);
     await this.boards.list();
     await this.initializeStorage();
+    this.templates = new TaskTemplates(this, parseYaml, stringifyYaml);
     this.appearance = appearanceController(this);
     this.addSettingTab(new PikoBoardSettings(this.app, this));
     this.registerView(TYPE, (leaf) => new BoardView(leaf, this));
@@ -653,30 +655,43 @@ class PikoBoard extends Plugin {
     new Notice('Задача перемещена в корзину хранилища');
     return true;
   }
-  async submitTask(title, status, view) {
+  newTemplate(file) {
+    new AskModal(this.app, 'Название шаблона', 'Название шаблона', async (name) => {
+      const template = await this.templates.save(name, file);
+      await this.openFile(template);
+      new Notice('Шаблон сохранён');
+    }, file?.basename || '').open();
+  }
+  async submitTask(title, status, view, templateFile) {
+    const board = view?.boardConfig?.id || '';
+    const projects =
+      view?.mode !== 'focus' && view?.filters.project && view.filters.project !== '__none__'
+        ? ['[[' + view.filters.project + ']]'] : [];
+    // Load the current template before creating anything; failed reads leave no empty task.
+    const template = templateFile ? await this.templates.read(templateFile) : { tags: [], details: '' };
     const task = await this.api().tasks.create(
       {
         title,
         status,
-        board: view?.boardConfig?.id || '',
-        projects:
-          view?.mode !== 'focus' && view?.filters.project && view.filters.project !== '__none__'
-            ? ['[[' + view.filters.project + ']]']
-            : [],
-        tags: [],
-        details: '',
+        board,
+        projects,
+        tags: template.tags,
+        details: template.details,
       },
       CONTEXT,
     );
-    this.data.order = C.moveTaskOrder(
-      C.orderedTasks(await this.tasks(), this.data.order).map((t) => t.path),
-      task.path,
-    );
-    await this.persist();
+    // Once the file exists, a layout/settings failure must not invite a duplicate submission.
+    this.data.order = C.moveTaskOrder(this.data.order, task.path);
     view?.recent.add(task.path);
-    if (view) {
-      await view.refresh();
-      view.revealNew(task.path);
+    try {
+      await this.persist();
+      if (view) {
+        await view.refresh();
+        view.revealNew(task.path);
+      }
+    } catch (error) {
+      new Notice('Задача создана. Не удалось обновить доску – открой её заново.');
+      console.error(error);
     }
     this.refresh();
     return this.app.vault.getAbstractFileByPath(task.path);
@@ -726,7 +741,7 @@ class PikoBoard extends Plugin {
     ).open();
   }
   openFile(file) {
-    this.app.workspace.getLeaf('tab').openFile(file);
+    return this.app.workspace.getLeaf('tab').openFile(file);
   }
   disposeHistory(container) {
     container._seq = (container._seq || 0) + 1;

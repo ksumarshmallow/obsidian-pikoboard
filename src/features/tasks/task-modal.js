@@ -79,6 +79,13 @@ class TaskModal extends Modal {
           }),
       );
       menu.addItem((i) =>
+        i.setTitle('Сохранить как шаблон').setIcon('copy-plus').onClick(async () => {
+          try {
+            if (await this.close()) this.plugin.newTemplate(this.file);
+          } catch (error) { this.fail(error); }
+        }),
+      );
+      menu.addItem((i) =>
         i.setTitle('Открыть файл').onClick(async () => {
           if (await this.close()) this.plugin.openFile(this.file);
         }),

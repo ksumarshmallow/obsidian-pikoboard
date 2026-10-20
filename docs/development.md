@@ -32,6 +32,8 @@ npm run build  # Только пересобрать main.js и styles.css
 | Поиск и сочетания фильтров | `src/domain/filters.js`, `src/features/boards/filter-bar.js` |
 | Сохранённые подборки и очередь их записи | `src/storage/saved-filters.js` |
 | Ввод тегов плашками и очередь изменений | `src/features/tasks/tag-editor.js` |
+| Шаблоны задач, очистка истории и сброс чеклистов | `src/storage/task-templates.js` |
+| Выбор шаблона при быстром создании | `src/features/tasks/template-picker.js` |
 | Общие настройки плагина | `src/settings/settings-tab.js` |
 | Цвета, отступы, размеры и состояния элементов | `src/styles/pikoboard.css` |
 

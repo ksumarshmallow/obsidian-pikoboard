@@ -1,5 +1,5 @@
 'use strict';
-const { ItemView, FileView, Menu, Notice, TFile, setIcon } = require('obsidian');
+const { ItemView, FileView, Menu, Notice, TFile, Scope, setIcon } = require('obsidian');
 const C = require('../../domain/tasks.js');
 const F = require('../../domain/filters.js');
 const B = require('../../storage/board-store.js');
@@ -12,6 +12,7 @@ const { JournalComposer } = require('../journal/composer.js');
 const { nextStep } = require('../journal/next-step.js');
 const { AddColumnModal, BoardSettingsModal, BoardStorageModal } = require('./board-settings.js');
 const { TaskModal } = require('../tasks/task-modal.js');
+const { pickTemplate } = require('../tasks/template-picker.js');
 const { TYPE, FILE_TYPE, CONTEXT, statuses } = require('../../constants.js');
 
 const BoardBase = (Base) =>
@@ -54,6 +55,7 @@ const BoardBase = (Base) =>
       await this.refresh();
     }
     async onUnloadFile() {
+      for (const col of this.columns?.values() || []) col.createRow?._dispose?.();
       this.cancelColumnDrag?.();
       this.boardConfig = null;
       this.boardError = '';
@@ -73,7 +75,8 @@ const BoardBase = (Base) =>
               col.createRow &&
               !col.createRow.contains(e.target) &&
               !col.createInput.value.trim() &&
-              !col.createRow._busy
+              !col.createRow._busy &&
+              !col.createRow._picking
             ) {
               col.createRow.hidden = true;
               col.col.querySelector('.pb-add-task').hidden = false;
@@ -85,6 +88,7 @@ const BoardBase = (Base) =>
       await this.refresh();
     }
     async onClose() {
+      for (const col of this.columns?.values() || []) col.createRow?._dispose?.();
       this.cancelColumnDrag?.();
       this.filterBar?.dispose();
       this.seq++;
@@ -115,7 +119,8 @@ const BoardBase = (Base) =>
       const row = el(col.col, 'form', 'pb-create-row');
       col.col.insertBefore(row, col.list);
       col.createRow = row;
-      const input = el(row, 'textarea', 'pb-create-input');
+      const entry = el(row, 'div', 'pb-create-entry');
+      const input = el(entry, 'textarea', 'pb-create-input');
       col.createInput = input;
       input.rows = 1;
       input.placeholder =
@@ -124,16 +129,72 @@ const BoardBase = (Base) =>
       const add = col.col.querySelector('.pb-add-task');
       add.hidden = true;
       const hide = () => {
+        row._dispose?.();
         row.hidden = true;
         add.hidden = false;
       };
       row.onfocusout = () =>
         setTimeout(() => {
-          if (!row.contains(document.activeElement) && !input.value.trim() && !row._busy) hide();
+          if (!row.contains(document.activeElement) && !input.value.trim() && !row._busy && !row._picking) hide();
         }, 0);
-      const send = icon(row, 'arrow-up', 'Создать задачу', () => row.requestSubmit());
+      const send = icon(entry, 'arrow-up', 'Создать задачу', () => row.requestSubmit());
       send.classList.add('pb-create-send');
       send.hidden = true;
+      const tools = el(row, 'div', 'pb-create-tools');
+      const template = button(tools, '', async () => {
+        if (row._busy || row._picking) return;
+        row._picking = true;
+        try {
+          const selected = await pickTemplate(this.plugin);
+          if (!row.isConnected) return;
+          if (selected?.create) {
+            this.plugin.newTemplate();
+            return;
+          }
+          if (selected) {
+            row._template = selected.file;
+            templateLabel.textContent = selected.label;
+            template.setAttribute('aria-label', 'Шаблон ' + selected.label);
+            clearTemplate.hidden = false;
+          }
+          input.focus();
+        } catch (error) {
+          new Notice(errorMessage(error));
+          input.focus();
+        } finally { row._picking = false; }
+      }, 'pb-template-choice');
+      setIcon(el(template, 'span'), 'copy-plus');
+      const templateLabel = el(template, 'span', '', 'Шаблон');
+      template.setAttribute('aria-label', 'Выбрать шаблон');
+      const clearTemplate = icon(tools, 'x', 'Убрать шаблон', () => {
+        row._template = null;
+        templateLabel.textContent = 'Шаблон';
+        template.setAttribute('aria-label', 'Выбрать шаблон');
+        clearTemplate.hidden = true;
+        input.focus();
+      });
+      clearTemplate.hidden = true;
+      if (this.app?.keymap) {
+        const scope = new Scope(this.app.scope);
+        let active = false;
+        row._dispose = () => {
+          if (active) this.app.keymap.popScope(scope);
+          active = false;
+        };
+        scope.register(['Mod'], 'Enter', (e) => {
+          if (e.isComposing) return true;
+          e.preventDefault();
+          e.stopPropagation();
+          row._openTask = true;
+          row.requestSubmit();
+          return false;
+        });
+        input.onfocus = () => {
+          if (!active) this.app.keymap.pushScope(scope);
+          active = true;
+        };
+        input.onblur = row._dispose;
+      }
       input.oninput = () => {
         send.hidden = !input.value.trim();
         grow(input, 36, 120);
@@ -154,14 +215,16 @@ const BoardBase = (Base) =>
       row.onsubmit = async (e) => {
         e.preventDefault();
         const title = input.value.trim();
+        const open = row._openTask;
+        row._openTask = false;
         if (!title || row._busy) return;
         row._busy = true;
         send.disabled = true;
+        template.disabled = true;
+        clearTemplate.disabled = true;
         input.readOnly = true;
-        const open = row._openTask;
-        row._openTask = false;
         try {
-          const f = await this.plugin.submitTask(title, status, this);
+          const f = await this.plugin.submitTask(title, status, this, row._template);
           input.value = '';
           send.hidden = true;
           grow(input, 36, 120);
@@ -177,6 +240,8 @@ const BoardBase = (Base) =>
           row._busy = false;
           input.readOnly = false;
           send.disabled = false;
+          template.disabled = false;
+          clearTemplate.disabled = false;
         }
       };
       row.scrollIntoView({ block: 'nearest' });
@@ -241,6 +306,7 @@ const BoardBase = (Base) =>
         }
       }
       if (this.boardError) {
+        for (const col of this.columns?.values() || []) col.createRow?._dispose?.();
         if (this.filterBar) this.filterBar.node.hidden = true;
         for (const c of this.cards.values()) this.disposeCard(c);
         this.cards.clear();
@@ -315,6 +381,7 @@ const BoardBase = (Base) =>
         this.boardConfig?.id,
       ]);
       if (this.layoutMode !== layout) {
+        for (const col of this.columns?.values() || []) col.createRow?._dispose?.();
         for (const c of this.cards.values()) this.disposeCard(c);
         this.cards.clear();
         this.columns = null;

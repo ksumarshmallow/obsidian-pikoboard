@@ -18,6 +18,7 @@ const DEFAULT_SETTINGS = {
   materialsFolder: 'Материалы',
   projectsFolder: 'Проекты',
   boardsFolder: '',
+  templatesFolder: 'Templates/PikoBoard',
   taskTag: 'task',
   taskIdentificationMethod: 'tag',
   taskPropertyName: '',
@@ -78,6 +79,7 @@ function settingsFrom(saved = {}) {
     'materialsFolder',
     'projectsFolder',
     'boardsFolder',
+    'templatesFolder',
   ])
     result[key] = folderPath(result[key]);
   result.taskTag = tags(result.taskTag)[0] || 'task';
@@ -208,6 +210,7 @@ class TaskStore {
     return [s.taskTag, s.fieldMapping.archiveTag];
   }
   isTask(data) {
+    if (data['pikoboard-template'] === true) return false;
     const s = this.config;
     if (s.taskIdentificationMethod === 'property' && s.taskPropertyName)
       return String(data[s.taskPropertyName] ?? '') === String(s.taskPropertyValue);

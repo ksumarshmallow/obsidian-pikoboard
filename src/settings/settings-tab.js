@@ -37,6 +37,7 @@ class PikoBoardSettings extends PluginSettingTab {
       ['attachmentsFolder', 'Attachments folder'],
       ['materialsFolder', 'Research folder'],
       ['projectsFolder', 'Projects folder'],
+      ['templatesFolder', 'Task templates folder'],
     ])
       new Setting(containerEl)
         .setName(label)
@@ -73,6 +74,10 @@ class PikoBoardSettings extends PluginSettingTab {
         save({ archiveDays: days });
       });
     });
+    new Setting(containerEl)
+      .setName('Task templates')
+      .setDesc('Save any task as a template from its menu, or start with a blank note.')
+      .addButton((b) => b.setButtonText('New template').onClick(() => this.plugin.newTemplate()));
     new Setting(containerEl)
       .setName('Board')
       .addButton((b) => b.setButtonText('Create board').onClick(() => this.plugin.newBoard()));
