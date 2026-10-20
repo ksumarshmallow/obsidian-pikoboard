@@ -831,12 +831,38 @@ body:is([data-pikoboard-appearance="piko"], [data-pikoboard-appearance="piko-lig
   box-shadow: none;
 }
 .pikoboard .pb-props {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
+  display: grid;
   gap: 6px;
   margin: 0 0 18px;
   min-width: 0;
+}
+.pikoboard .pb-property-row {
+  display: grid;
+  grid-template-columns: 86px minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+  min-width: 0;
+}
+.pikoboard .pb-property-label {
+  display: flex;
+  align-items: center;
+  min-height: 30px;
+  color: var(--pb-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.pikoboard .pb-property-value {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-width: 0;
+}
+.pikoboard .pb-property-value > .pb-picker-wrap,
+.pikoboard .pb-property-value > .pb-chip,
+.pikoboard .pb-property-value .pb-picker {
+  max-width: 100%;
 }
 .pikoboard .pb-props .pb-status {
   color: var(--pb-secondary);
@@ -1613,6 +1639,10 @@ body:is([data-pikoboard-appearance="piko"], [data-pikoboard-appearance="piko-lig
   }
   .pikoboard .pb-props {
     gap: 5px;
+  }
+  .pikoboard .pb-property-row {
+    grid-template-columns: 72px minmax(0, 1fr);
+    gap: 8px;
   }
 }
 @media (pointer: coarse) {

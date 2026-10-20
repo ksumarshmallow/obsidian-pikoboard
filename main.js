@@ -5264,9 +5264,14 @@ class TaskModal extends Modal {
     this.closeCalendar();
     this.props.querySelectorAll('.pb-picker-wrap').forEach((w) => w._dispose?.());
     this.props.replaceChildren();
+    const propertyRow = (label) => {
+      const row = el(this.props, 'div', 'pb-property-row');
+      el(row, 'span', 'pb-property-label', label);
+      return el(row, 'div', 'pb-property-value');
+    };
     const columns = this.plugin.columnsFor(this.task);
     const statusButton = picker(
-      this.props,
+      propertyRow('Status'),
       columns.find((s) => s.value === this.task.status)?.label || this.task.status,
       'Статус',
       columns.map((s) => ({
@@ -5289,7 +5294,7 @@ class TaskModal extends Modal {
       file = p && this.app.metadataCache.getFirstLinkpathDest(C.linkTarget(p), this.file.path),
       key = file ? file.path.replace(/\.md$/, '') : C.linkTarget(p || '');
     const b = button(
-      this.props,
+      propertyRow('Project'),
       '',
       () => this.plugin.chooseProject((link) => this.change({ projects: link ? [link] : [] })),
       'pb-chip pb-picker ' + (p ? 'pb-project pb-color-' + C.colorFor(key) : ''),
@@ -5297,12 +5302,13 @@ class TaskModal extends Modal {
     el(b, 'span', 'pb-picker-label', p ? fileTitle(p) : 'Проект');
     setIcon(el(b, 'span', 'pb-chevron'), 'chevron-down');
     b.setAttribute('aria-label', 'Проект');
-    const date = button(this.props, '', () => this.showCalendar(), 'pb-chip pb-date-button pb-due');
+    const date = button(propertyRow('Due date'), '', () => this.showCalendar(), 'pb-chip pb-date-button pb-due');
     setIcon(el(date, 'span'), 'calendar-days');
     this.dateLabel = el(date, 'span');
     this.dateButton = date;
     this.updateDue();
-    this.tagEditor ||= new TagEditor(this.props, {
+    const tags = propertyRow('Tags');
+    this.tagEditor ||= new TagEditor(tags, {
       tags: () => this.task.tags,
       system: () => this.systemTags(),
       draft: this.plugin.draft(this.file.path),
@@ -5310,7 +5316,7 @@ class TaskModal extends Modal {
       save: (edit) => this.change((task) => ({ tags: edit(task.tags) })),
       fail: (error) => this.fail(error),
     });
-    this.props.append(this.tagEditor.node);
+    tags.append(this.tagEditor.node);
     this.tagEditor.render();
     if (tagFocused) {
       this.tagEditor.input.focus();
