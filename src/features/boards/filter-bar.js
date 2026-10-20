@@ -104,6 +104,12 @@ class FilterBar {
       const shown = v.visibleColumns();
       return shown.length === statuses.length ? 'Все столбцы' : `Столбцы · ${shown.length} из ${statuses.length}`;
     };
+    const tagLabel = () => v.filters.tags.length
+      ? v.filters.tags.map((t) => t === '__none__' ? 'Без тегов' : '#' + t).join(', ') : 'Все теги';
+    if (this.tagsButton?._isOpen() && v.mode !== 'focus') {
+      this.tagsButton._update(tagLabel());
+      return;
+    }
     // Keep the checklist and keyboard focus alive while columns update behind it.
     if (this.columnButton?._isOpen() && !v.archive && v.mode !== 'focus') {
       this.columnButton._update(columnLabel());
@@ -117,15 +123,16 @@ class FilterBar {
       ? document.activeElement.getAttribute('aria-label') : null;
     this.controls.querySelectorAll('.pb-picker-wrap').forEach((w) => w._dispose?.());
     this.controls.replaceChildren();
-    const tagsButton = picker(this.controls, f.tags.length ? f.tags.map((t) => t === '__none__' ? 'Без тегов' : '#' + t).join(', ') : 'Все теги',
-      'Фильтр по тегам', [
-        { value: '', label: 'Все теги', selected: !f.tags.length },
-        ...['__none__', ...tags].map((t) => ({ value: t, label: t === '__none__' ? 'Без тегов' : '#' + t, selected: f.tags.includes(t) })),
+    const tagsButton = this.tagsButton = picker(this.controls, tagLabel(),
+      'Фильтр по тегам', () => [
+        { value: '', label: 'Все теги', selected: !v.filters.tags.length },
+        ...['__none__', ...tags].map((t) => ({ value: t, label: t === '__none__' ? 'Без тегов' : '#' + t, selected: v.filters.tags.includes(t) })),
       ], ({ value }) => {
-        v.filters.tags = !value ? [] : f.tags.includes(value) ? f.tags.filter((x) => x !== value)
-          : value === '__none__' ? [value] : [...f.tags.filter((x) => x !== '__none__'), value];
+        const current = v.filters.tags;
+        v.filters.tags = !value ? [] : current.includes(value) ? current.filter((x) => x !== value)
+          : value === '__none__' ? [value] : [...current.filter((x) => x !== '__none__'), value];
         v.changed();
-      }, 'pb-filter' + (f.tags.length ? ' is-active' : ''));
+      }, 'pb-filter' + (f.tags.length ? ' is-active' : ''), { multiple: true, onClose: () => this.update() });
     const columnButton = this.columnButton = v.archive ? null : picker(this.controls, columnLabel(),
       'Видимые столбцы', () => {
         const shown = v.visibleColumns().map((c) => c.value);

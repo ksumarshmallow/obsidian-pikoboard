@@ -223,6 +223,27 @@ test('closing waits for pending title mutation before dismissing', async () => {
   assert.equal(m.task.title, 'New title');
   assert.equal(m.closed, true);
 });
+test('functional tag edits read the latest task inside the mutation queue', async () => {
+  const { plugin, m } = setup();
+  plugin.queues = new Map();
+  plugin.refresh = () => {};
+  let disk = { ...m.task, tags: ['task'] };
+  const gate = defer();
+  let first = true;
+  plugin.api = () => ({ tasks: {
+    get: async () => ({ ...disk }),
+    update: async (path, patch) => {
+      if (first) { first = false; await gate.promise; }
+      disk = { ...disk, ...patch };
+      return disk;
+    },
+  } });
+  const a = plugin.patch(m.file, { tags: ['task', 'first'] });
+  const b = plugin.patch(m.file, (task) => ({ tags: [...task.tags, 'second'] }));
+  gate.resolve();
+  await Promise.all([a, b]);
+  assert.deepEqual(disk.tags, ['task', 'first', 'second']);
+});
 test('external refresh must not replace a body saved after that refresh started', async () => {
   const { m, plugin } = setup();
   const gate = defer();

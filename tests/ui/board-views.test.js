@@ -367,6 +367,34 @@ test('column visibility survives focus and archive, custom empty columns stay se
   assert.equal(view.columns.size, 4, 'deleted selections recover to all columns');
 });
 
+test('tag multi-select keeps the same popup across choices and closes only on dismissal', async () => {
+  const { view, document } = boardFixture([
+    { path: 'Both', status: 'open', projects: [], visibleTags: ['alpha', 'beta'] },
+    { path: 'One', status: 'open', projects: [], visibleTags: ['alpha'] },
+  ]);
+  let pending;
+  view.changed = () => { pending = view.refresh(); };
+  await view.refresh();
+  const trigger = view.filterBar.tagsButton;
+  trigger.onclick();
+  const popup = document.body.querySelector('.pb-multi-picker');
+  const options = popup.querySelectorAll('button');
+  options[2].onclick();
+  await pending;
+  assert.deepEqual([...view.filters.tags], ['alpha']);
+  assert.equal(popup.isConnected, true);
+  options[3].onclick();
+  await pending;
+  assert.deepEqual([...view.filters.tags], ['alpha', 'beta']);
+  assert.deepEqual([...view.cards.keys()], ['Both']);
+  assert.equal(view.filterBar.tagsButton, trigger);
+  assert.equal(popup.isConnected, true);
+  assert.equal(options[2].getAttribute('aria-selected'), 'true');
+  assert.equal(options[3].getAttribute('aria-selected'), 'true');
+  document.listeners.get('pointerdown')({ target: view.filterBar.input });
+  assert.equal(popup.isConnected, false);
+});
+
 test('focus includes every active in-progress task despite saved domain/tag filters and shows no false badges', async () => {
   const tasks = [
     { path: 'A', status: 'in-progress', projects: ['[[Projects/A]]'], visibleTags: ['work'] },

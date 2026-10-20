@@ -1433,6 +1433,52 @@ body:is([data-pikoboard-appearance="piko"], [data-pikoboard-appearance="piko-lig
   font-size: 12px;
 }
 /* Inline metadata and task creation avoid stacked dialogs. */
+.pikoboard .pb-tag-editor,
+.pikoboard .pb-tag-chips {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-width: 0;
+  max-width: 100%;
+}
+.pikoboard .pb-tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 100%;
+  padding: 3px 3px 3px 8px;
+  border: 1px solid var(--pb-line);
+  border-radius: 6px;
+  background: var(--pb-accent-soft);
+  color: var(--pb-secondary);
+  font-size: 12px;
+  line-height: 20px;
+}
+.pikoboard .pb-tag-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.pikoboard .pb-tag-chip .pb-tag-remove {
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  min-height: 22px;
+  padding: 4px;
+  flex: none;
+  color: var(--pb-muted);
+}
+.pikoboard .pb-tag-remove svg {
+  width: 14px;
+  height: 14px;
+}
+.pikoboard .pb-tag-chip .pb-tag-remove:hover {
+  color: var(--pb-text);
+  background: var(--pb-hover);
+}
+.pikoboard .pb-tag-editor.is-error .pb-tag-chip {
+  border-color: var(--pb-danger-line);
+}
 .pikoboard .pb-tags-input {
   flex: 0 1 auto;
   min-width: 74px;

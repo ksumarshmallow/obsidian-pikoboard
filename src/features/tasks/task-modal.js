@@ -9,6 +9,7 @@ const { richEditor } = require('../../ui/rich-editor.js');
 const { JournalComposer } = require('../journal/composer.js');
 const { nextStep } = require('../journal/next-step.js');
 const { CONTEXT } = require('../../constants.js');
+const { TagEditor } = require('./tag-editor.js');
 
 class TaskModal extends Modal {
   constructor(plugin, file) {
@@ -212,10 +213,14 @@ class TaskModal extends Modal {
   }
   renderProps() {
     this.propsSignature = this.propsKey(this.task);
-    const tagDraft =
-      this.tagsInput && this.tagsInput.value !== this.tagsInput._baseline
-        ? this.tagsInput.value
-        : undefined;
+    const controlsSignature = this.propsKey({ ...this.task, tags: [] });
+    if (this.tagEditor && this.controlsSignature === controlsSignature) {
+      this.tagEditor.render();
+      return;
+    }
+    this.controlsSignature = controlsSignature;
+    const tagFocused = this.tagEditor?.input === document.activeElement;
+    const selection = tagFocused ? [this.tagEditor.input.selectionStart, this.tagEditor.input.selectionEnd] : null;
     this.closeCalendar();
     this.props.querySelectorAll('.pb-picker-wrap').forEach((w) => w._dispose?.());
     this.props.replaceChildren();
@@ -257,50 +262,26 @@ class TaskModal extends Modal {
     this.dateLabel = el(date, 'span');
     this.dateButton = date;
     this.updateDue();
-    const system = this.systemTags(),
-      visible = C.tagList(this.task.tags).filter(
-        (t) => !system.some((s) => s.toLowerCase() === t.toLowerCase()),
-      );
-    const tags = el(this.props, 'input', 'pb-tags-input');
-    this.tagsInput = tags;
-    tags.placeholder = '#тег';
-    tags.setAttribute('aria-label', 'Теги');
-    tags.value = tagDraft ?? visible.map((t) => '#' + t).join(' ');
-    tags._baseline = visible.map((t) => '#' + t).join(' ');
-    tags.size = Math.max(5, Math.min(30, tags.value.length + 1));
-    tags.oninput = () => {
-      tags.size = Math.max(5, Math.min(30, tags.value.length + 1));
-    };
-    tags.onblur = () => this.commitTags().catch((e) => this.fail(e));
-    tags.onkeydown = (e) => {
-      if (e.key === 'Enter' && !e.isComposing) {
-        e.preventDefault();
-        tags.blur();
-      }
-    };
+    this.tagEditor ||= new TagEditor(this.props, {
+      tags: () => this.task.tags,
+      system: () => this.systemTags(),
+      draft: this.plugin.draft(this.file.path),
+      persist: (draft) => this.plugin.setDraft(this.file.path, draft),
+      save: (edit) => this.change((task) => ({ tags: edit(task.tags) })),
+      fail: (error) => this.fail(error),
+    });
+    this.props.append(this.tagEditor.node);
+    this.tagEditor.render();
+    if (tagFocused) {
+      this.tagEditor.input.focus();
+      this.tagEditor.input.setSelectionRange(...selection);
+    }
   }
   systemTags() {
     return this.plugin.systemTags();
   }
   commitTags() {
-    const input = this.tagsInput;
-    if (!input || input.value === input._baseline) return Promise.resolve();
-    if (this.tagsSave?.input === input && this.tagsSave.value === input.value)
-      return this.tagsSave.promise;
-    const value = input.value;
-    let tags;
-    try {
-      tags = C.taskTags(value, this.task.tags, this.systemTags());
-    } catch (e) {
-      return Promise.reject(e);
-    }
-    input._baseline = value;
-    const promise = this.change({ tags }).catch((e) => {
-      input._baseline = null;
-      throw e;
-    });
-    this.tagsSave = { input, value, promise };
-    return promise;
+    return this.tagEditor?.flush() || Promise.resolve();
   }
   showCalendar() {
     if (this.calendar) {
@@ -408,16 +389,15 @@ class TaskModal extends Modal {
     this.calendar = null;
   }
   change(patch) {
-    const activeKey = this.props?.contains(document.activeElement)
-      ? document.activeElement.getAttribute('aria-label')
-      : null;
     this.propertySave = this.propertySave
       .catch(() => {})
       .then(async () => {
         this.task = await this.plugin.patch(this.file, patch);
         if (!this.closed) {
+          const active = document.activeElement;
+          const activeKey = this.props?.contains(active) ? active.getAttribute('aria-label') : null;
           this.renderProps();
-          if (activeKey)
+          if (activeKey && !active.isConnected)
             [...this.props.querySelectorAll('[aria-label]')]
               .find((e) => e.getAttribute('aria-label') === activeKey)
               ?.focus();
@@ -443,6 +423,7 @@ class TaskModal extends Modal {
     return this.plugin.setDraft(this.file.path, {
       body: this.session.dirty ? this.session.value : undefined,
       bodyBase: this.session.dirty ? this.session.baseline : undefined,
+      ...(this.tagEditor?.draft() || {}),
       ...(!this.journalComposer ? { update: this.updateInput?.value || undefined } : {}),
     });
   }
@@ -780,6 +761,7 @@ class TaskModal extends Modal {
   }
   onClose() {
     this.closed = true;
+    this.tagEditor?.dispose();
     clearTimeout(this.saveTimer);
     clearTimeout(this.savedTimer);
     this.closeCalendar();

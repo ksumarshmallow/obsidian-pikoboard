@@ -31,6 +31,7 @@ npm run build  # Только пересобрать main.js и styles.css
 | Состояние срока по местной дате и оформление плашки | `src/domain/due-dates.js`, `src/ui/due-date.js` |
 | Поиск и сочетания фильтров | `src/domain/filters.js`, `src/features/boards/filter-bar.js` |
 | Сохранённые подборки и очередь их записи | `src/storage/saved-filters.js` |
+| Ввод тегов плашками и очередь изменений | `src/features/tasks/tag-editor.js` |
 | Общие настройки плагина | `src/settings/settings-tab.js` |
 | Цвета, отступы, размеры и состояния элементов | `src/styles/pikoboard.css` |
 

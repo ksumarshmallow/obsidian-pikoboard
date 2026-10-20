@@ -311,6 +311,11 @@ class PikoBoard extends Plugin {
   }
   patch(file, patch) {
     return this.queue(file, async () => {
+      if (typeof patch === 'function') {
+        const current = await this.api().tasks.get(file.path);
+        if (!current) throw new Error('Задача не найдена');
+        patch = patch(current);
+      }
       const task = await this.api().tasks.update(file.path, patch, CONTEXT);
       this.refresh();
       return task;
