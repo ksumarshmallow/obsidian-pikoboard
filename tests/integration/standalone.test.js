@@ -210,6 +210,7 @@ test('first launch works in a clean vault without TaskNotes or other community p
   });
   await plugin.initializeStorage();
   assert.equal(plugin.settings.tasksFolder, 'Задачи');
+  assert.equal(plugin.settings.appearance, 'obsidian');
   assert.equal(plugin.settings.autoArchive, true);
   assert.equal(plugin.settings.archiveDays, 7);
   assert.deepEqual([...plugin.systemTags()], ['task', 'archived']);
@@ -253,4 +254,58 @@ test('an unreadable legacy config reports the fallback without preventing standa
   await plugin.initializeStorage();
   assert.equal(notices.length, 1);
   assert.equal(plugin.settings.tasksFolder, 'Задачи');
+});
+
+test('an existing installation retains Piko until the user changes its appearance', async () => {
+  const { plugin } = setup({ settings: { tasksFolder: 'My tasks' } });
+  const saved = [];
+  plugin.saveData = async (data) => saved.push(data);
+  await plugin.initializeStorage();
+  assert.equal(plugin.settings.appearance, 'piko');
+  assert.equal(saved[0].settings.appearance, 'piko');
+  assert.equal(plugin.settings.tasksFolder, 'My tasks');
+  plugin.refresh = () => { throw Error('A palette change must not recreate active editors'); };
+  const applied = [];
+  plugin.appearance = { apply: () => applied.push(plugin.settings.appearance) };
+  await plugin.saveSettings({ appearance: 'obsidian' });
+  assert.deepEqual(applied, ['obsidian']);
+  assert.equal(saved.at(-1).settings.appearance, 'obsidian');
+  await plugin.initializeStorage();
+  assert.equal(plugin.settings.appearance, 'obsidian', 'explicit preference survives restart');
+});
+
+test('failed preference writes retain the active appearance and allow a later retry', async () => {
+  const { plugin } = setup({ settings: S.settingsFrom({ appearance: 'piko' }) });
+  await plugin.initializeStorage();
+  plugin.refresh = () => { throw Error('Unexpected refresh'); };
+  let applied = 0;
+  plugin.appearance = { apply: () => applied++ };
+  plugin.saveData = async () => { throw Error('Disk full'); };
+  await assert.rejects(plugin.saveSettings({ appearance: 'obsidian' }), /Disk full/);
+  assert.equal(plugin.settings.appearance, 'piko');
+  assert.equal(plugin.data.settings.appearance, 'piko');
+  assert.equal(applied, 0);
+  plugin.saveData = async () => {};
+  await plugin.saveSettings({ appearance: 'obsidian' });
+  assert.equal(applied, 1);
+  let refreshed = 0;
+  plugin.refresh = () => refreshed++;
+  await plugin.saveSettings({ tasksFolder: 'Tasks' });
+  assert.equal(refreshed, 1, 'changes affecting task queries still refresh the board');
+});
+
+test('overlapping appearance and folder writes retain both preferences', async () => {
+  const { plugin } = setup({ settings: S.settingsFrom({ appearance: 'piko' }) });
+  await plugin.initializeStorage();
+  plugin.refresh = () => {};
+  const saved = [];
+  plugin.saveData = async (data) => saved.push(data);
+  await Promise.all([
+    plugin.saveSettings({ appearance: 'obsidian' }),
+    plugin.saveSettings({ tasksFolder: 'Tasks' }),
+  ]);
+  assert.equal(plugin.settings.appearance, 'obsidian');
+  assert.equal(plugin.settings.tasksFolder, 'Tasks');
+  assert.equal(saved.at(-1).settings.appearance, 'obsidian');
+  assert.equal(saved.at(-1).settings.tasksFolder, 'Tasks');
 });

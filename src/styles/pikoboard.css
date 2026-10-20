@@ -1,19 +1,134 @@
-/* PikoBoard — neutral black surfaces, subtle periwinkle accents. */
+/* Palette tokens are scoped to PikoBoard; native Obsidian notes are untouched. */
 .pikoboard,
 .pb-task-modal,
-.pb-prompt {
+.pb-prompt,
+.pb-config-modal,
+.pb-delete-modal,
+.pb-message-editor,
+.pb-notice-undo,
+.workspace-leaf-content[data-type="pikoboard-view"] .view-content,
+.workspace-leaf-content[data-type="pikoboard-file-view"] .view-content {
+  --pb-bg: var(--background-primary);
+  --pb-panel: var(--background-primary);
+  --pb-card: var(--background-secondary);
+  --pb-input: var(--background-modifier-form-field);
+  --pb-text: var(--text-normal);
+  --pb-muted: var(--text-muted);
+  --pb-faint: var(--text-faint);
+  --pb-secondary: var(--text-normal);
+  --pb-line: var(--background-modifier-border);
+  --pb-line-hover: var(--background-modifier-border-hover);
+  --pb-line-soft: color-mix(in srgb, var(--pb-line) 65%, transparent);
+  --pb-accent: var(--text-accent);
+  --pb-accent-fill: var(--interactive-accent);
+  --pb-accent-hover: var(--interactive-accent-hover);
+  --pb-on-accent: var(--text-on-accent);
+  --pb-accent-soft: color-mix(in srgb, var(--pb-accent) 10%, transparent);
+  --pb-accent-soft-hover: color-mix(in srgb, var(--pb-accent) 17%, transparent);
+  --pb-accent-line-soft: color-mix(in srgb, var(--pb-accent) 20%, transparent);
+  --pb-accent-line: color-mix(in srgb, var(--pb-accent) 45%, transparent);
+  --pb-hover: var(--background-modifier-hover);
+  --pb-selection: var(--text-selection);
+  --pb-danger: var(--text-error);
+  --pb-danger-fill: color-mix(in srgb, var(--color-red) 85%, black);
+  --pb-on-danger: white;
+  --pb-danger-soft: color-mix(in srgb, var(--pb-danger) 12%, transparent);
+  --pb-danger-line: color-mix(in srgb, var(--pb-danger) 28%, transparent);
+  --pb-shadow: var(--background-modifier-box-shadow);
+  --pb-scrollbar: var(--scrollbar-thumb-bg);
+  --pb-pointer: pointer;
+  --pb-text-cursor: text;
+  --pb-blue: var(--color-blue);
+  --pb-purple: var(--color-purple);
+  --pb-cyan: var(--color-cyan);
+  --pb-orange: var(--color-orange);
+  --pb-pink: var(--color-pink);
+  --pb-gray: var(--text-muted);
+  color: var(--pb-text);
+  font-family: var(--font-interface);
+  font-size: 14px;
+  line-height: 1.5;
+  box-sizing: border-box;
+}
+.theme-light :is(.pikoboard,
+.pb-task-modal,
+.pb-prompt,
+.pb-config-modal,
+.pb-delete-modal,
+.pb-message-editor,
+.pb-notice-undo,
+.workspace-leaf-content[data-type="pikoboard-view"] .view-content,
+.workspace-leaf-content[data-type="pikoboard-file-view"] .view-content) { color-scheme: light; }
+.theme-dark :is(.pikoboard,
+.pb-task-modal,
+.pb-prompt,
+.pb-config-modal,
+.pb-delete-modal,
+.pb-message-editor,
+.pb-notice-undo,
+.workspace-leaf-content[data-type="pikoboard-view"] .view-content,
+.workspace-leaf-content[data-type="pikoboard-file-view"] .view-content) { color-scheme: dark; }
+
+/* The original black/periwinkle look is an opt-in preset, including in a light vault. */
+body[data-pikoboard-appearance="piko"] :is(.pikoboard,
+.pb-task-modal,
+.pb-prompt,
+.pb-config-modal,
+.pb-delete-modal,
+.pb-message-editor,
+.pb-notice-undo,
+.workspace-leaf-content[data-type="pikoboard-view"] .view-content,
+.workspace-leaf-content[data-type="pikoboard-file-view"] .view-content) {
   --pb-bg: #0d0d0f;
   --pb-panel: #131315;
   --pb-card: #1b1b1f;
+  --pb-input: #1f1f24;
   --pb-text: #e8e8ed;
   --pb-muted: #9898a3;
+  --pb-faint: #797583;
+  --pb-secondary: #cbc8d8;
   --pb-line: #303037;
+  --pb-line-hover: #484856;
   --pb-accent: #a8a5e6;
-  --checkbox-color: #a8a5e6;
-  --checkbox-color-hover: #c0bef0;
-  --checkbox-marker-color: #1b1930;
-  --checkbox-border-color: #60606d;
-  --checkbox-border-color-hover: #a8a5e6;
+  --pb-accent-fill: #a8a5e6;
+  --pb-accent-hover: #bcb9f1;
+  --pb-on-accent: #1b1930;
+  --pb-hover: #ffffff08;
+  --pb-selection: #a8a5e632;
+  --pb-danger: #ef9aab;
+  --pb-danger-fill: #a63750;
+  --pb-shadow: #0008;
+  --pb-scrollbar: #50505d;
+  --pb-blue: #9ba8c4;
+  --pb-purple: #b3a2ed;
+  --pb-cyan: #7baabd;
+  --pb-orange: #c5a374;
+  --pb-pink: #c28ea7;
+  --pb-gray: #9898a3;
+  --background-primary: var(--pb-panel);
+  --background-secondary: var(--pb-card);
+  --text-normal: var(--pb-text);
+  --text-muted: var(--pb-muted);
+  --text-faint: var(--pb-faint);
+  --text-accent: var(--pb-accent);
+  --text-accent-hover: var(--pb-accent-hover);
+  --text-on-accent: var(--pb-on-accent);
+  --interactive-accent: var(--pb-accent-fill);
+  --interactive-accent-hover: var(--pb-accent-hover);
+  --background-modifier-border: var(--pb-line);
+  --checklist-done-color: var(--pb-muted);
+  --blockquote-color: var(--pb-text);
+  --blockquote-border-color: var(--pb-accent);
+  --link-color: var(--pb-accent);
+  --link-color-hover: var(--pb-accent-hover);
+  --code-normal: var(--pb-text);
+  --code-background: var(--pb-bg);
+  --text-selection: var(--pb-selection);
+  --checkbox-color: var(--pb-accent-fill);
+  --checkbox-color-hover: var(--pb-accent-hover);
+  --checkbox-marker-color: var(--pb-on-accent);
+  --checkbox-border-color: var(--pb-line-hover);
+  --checkbox-border-color-hover: var(--pb-accent);
   --pb-pointer:
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M5 2v16l4-4 3 7 3-1-3-7h6Z' fill='%23a8a5e6' stroke='%230d0d0f' stroke-width='1.5' stroke-linejoin='round'/%3E%3C/svg%3E")
       5 2,
@@ -22,12 +137,9 @@
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M8 3h8M12 3v18M8 21h8' fill='none' stroke='%230d0d0f' stroke-width='4'/%3E%3Cpath d='M8 3h8M12 3v18M8 21h8' fill='none' stroke='%23a8a5e6' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E")
       12 12,
     text;
-  color: var(--pb-text);
   color-scheme: dark;
-  font-size: 14px;
-  line-height: 1.5;
-  box-sizing: border-box;
 }
+
 .pikoboard *,
 .pb-task-modal *,
 .pb-prompt * {
@@ -41,9 +153,10 @@
 .pikoboard {
   background: var(--pb-bg);
 }
-.workspace-leaf-content[data-type='pikoboard-view'] .view-content {
+.workspace-leaf-content[data-type='pikoboard-view'] .view-content,
+.workspace-leaf-content[data-type='pikoboard-file-view'] .view-content {
   padding: 0;
-  background: #0d0d0f;
+  background: var(--pb-bg);
 }
 .pikoboard button,
 .pikoboard input,
@@ -73,7 +186,7 @@
 .pikoboard textarea::selection,
 .pikoboard input::selection,
 .pikoboard ::selection {
-  background: #a8a5e632;
+  background: var(--pb-selection);
 }
 .pikoboard button {
   height: auto;
@@ -129,8 +242,8 @@
   box-shadow: none;
 }
 .pikoboard .pb-button:hover {
-  background: #ffffff08;
-  color: #f2f2f6;
+  background: var(--pb-hover);
+  color: var(--pb-text);
 }
 .pikoboard button:disabled {
   opacity: 0.45;
@@ -162,7 +275,7 @@
   flex-wrap: wrap;
   gap: 10px;
   padding: 16px 22px;
-  border-bottom: 1px solid #25252c;
+  border-bottom: 1px solid var(--pb-line);
 }
 .pikoboard .pb-nav {
   display: flex;
@@ -202,9 +315,9 @@
   max-width: 100%;
   border: 1px solid var(--pb-line);
   border-radius: 6px;
-  background: #1f1f24;
+  background: var(--pb-input);
   padding: 0 9px;
-  color: #bcbcc8;
+  color: var(--pb-secondary);
   font-size: 12px;
   font-weight: 400;
   line-height: 1;
@@ -242,7 +355,7 @@
   width: 12px;
   height: 12px;
   margin-left: 4px;
-  color: #858594;
+  color: var(--pb-muted);
   flex: none;
   pointer-events: none;
 }
@@ -260,8 +373,8 @@
   text-overflow: ellipsis;
 }
 .pikoboard .pb-new {
-  background: var(--pb-accent);
-  color: #1b1930;
+  background: var(--pb-accent-fill);
+  color: var(--pb-on-accent);
   border: 0;
   padding: 7px 11px;
   white-space: nowrap;
@@ -269,8 +382,8 @@
   font-weight: 550;
 }
 .pikoboard .pb-new:hover {
-  background: #bcb9f1;
-  color: #171526;
+  background: var(--pb-accent-hover);
+  color: var(--pb-on-accent);
 }
 .pikoboard .pb-board {
   display: grid;
@@ -286,50 +399,50 @@
   min-height: 300px;
   min-width: 0;
   padding: 13px 10px;
-  background: #14151a;
+  background: var(--pb-card);
 }
 .pikoboard .pb-work {
-  background: #18151c;
+  background: var(--pb-card);
 }
 .pikoboard .pb-done {
-  background: #151916;
+  background: var(--pb-panel);
 }
 .pikoboard .pb-column-header {
   display: flex;
   align-items: center;
   gap: 10px;
   margin: 0 4px 15px;
-  color: #bac0d1;
+  color: var(--pb-secondary);
   font-size: 17px;
   font-weight: 650;
   letter-spacing: -0.02em;
   line-height: 1.4;
 }
 .pikoboard .pb-work .pb-column-header {
-  color: #c5bacf;
+  color: var(--pb-secondary);
 }
 .pikoboard .pb-done .pb-column-header {
-  color: #b5c4ba;
+  color: var(--pb-secondary);
 }
 .pikoboard .pb-column-header small {
   margin-left: auto;
-  color: #858594;
+  color: var(--pb-muted);
   font-size: 11px;
   font-weight: 400;
 }
 .pikoboard .pb-done .pb-column-header small {
-  color: #89968e;
+  color: var(--pb-muted);
 }
 .pikoboard .pb-task {
   background: var(--pb-card);
-  border: 1px solid #303039;
+  border: 1px solid var(--pb-line);
   border-radius: 8px;
   overflow: hidden;
   margin-bottom: 9px;
   min-width: 0;
 }
 .pikoboard .pb-task:hover {
-  border-color: #484856;
+  border-color: var(--pb-line);
 }
 .pikoboard .pb-task-head {
   display: flex;
@@ -360,7 +473,7 @@
 }
 .pikoboard .pb-task-title:hover {
   background: transparent;
-  color: #f5f4fa;
+  color: var(--pb-text);
 }
 .pikoboard .pb-task-head > .pb-icon {
   width: 26px;
@@ -383,40 +496,46 @@
   padding: 2px 6px;
   border-radius: 4px;
   max-width: 100%;
-  background: #292930;
-  color: #b4b4c2;
+  background: var(--pb-hover);
+  color: var(--pb-secondary);
   font-size: 11px;
   line-height: 1.3;
   overflow-wrap: anywhere;
 }
 .pikoboard .pb-color-0 {
-  background: #272c3a !important;
-  color: #bac8e6 !important;
+  --pb-project-color: var(--pb-blue);
+  background: color-mix(in srgb, var(--pb-project-color) 15%, var(--pb-card)) !important;
+  color: color-mix(in srgb, var(--pb-project-color) 40%, var(--pb-text)) !important;
 }
 .pikoboard .pb-color-1 {
-  background: #302a3e !important;
-  color: #d0c0e7 !important;
+  --pb-project-color: var(--pb-purple);
+  background: color-mix(in srgb, var(--pb-project-color) 15%, var(--pb-card)) !important;
+  color: color-mix(in srgb, var(--pb-project-color) 40%, var(--pb-text)) !important;
 }
 .pikoboard .pb-color-2 {
-  background: #25323a !important;
-  color: #b7cfdc !important;
+  --pb-project-color: var(--pb-cyan);
+  background: color-mix(in srgb, var(--pb-project-color) 15%, var(--pb-card)) !important;
+  color: color-mix(in srgb, var(--pb-project-color) 40%, var(--pb-text)) !important;
 }
 .pikoboard .pb-color-3 {
-  background: #362f28 !important;
-  color: #d8c5b1 !important;
+  --pb-project-color: var(--pb-orange);
+  background: color-mix(in srgb, var(--pb-project-color) 15%, var(--pb-card)) !important;
+  color: color-mix(in srgb, var(--pb-project-color) 40%, var(--pb-text)) !important;
 }
 .pikoboard .pb-color-4 {
-  background: #382b35 !important;
-  color: #d8bbcf !important;
+  --pb-project-color: var(--pb-pink);
+  background: color-mix(in srgb, var(--pb-project-color) 15%, var(--pb-card)) !important;
+  color: color-mix(in srgb, var(--pb-project-color) 40%, var(--pb-text)) !important;
 }
 .pikoboard .pb-color-5 {
-  background: #303039 !important;
-  color: #c4c5d4 !important;
+  --pb-project-color: var(--pb-gray);
+  background: color-mix(in srgb, var(--pb-project-color) 15%, var(--pb-card)) !important;
+  color: color-mix(in srgb, var(--pb-project-color) 40%, var(--pb-text)) !important;
 }
 .pikoboard .pb-due.is-overdue,
 .pikoboard .pb-due.pb-overdue {
-  color: #d9aaa5;
-  background: #35272a;
+  color: var(--pb-danger);
+  background: var(--pb-danger-soft);
 }
 .pikoboard .pb-muted,
 .pikoboard .pb-column-empty {
@@ -430,17 +549,17 @@
   display: block;
   width: 100%;
   padding: 7px 4px;
-  color: #92929f;
+  color: var(--pb-muted);
   font-size: 12px;
 }
 .pikoboard .pb-task.pb-dragging {
   opacity: 1;
-  background: #302b44;
-  border-color: #b5adf4;
-  box-shadow: 0 0 0 1px #b5adf430;
+  background: var(--pb-accent-soft-hover);
+  border-color: var(--pb-accent);
+  box-shadow: 0 0 0 1px var(--pb-accent-line);
 }
 .pikoboard .pb-error {
-  color: #e0afa8;
+  color: var(--pb-danger);
   grid-column: 1/-1;
 }
 .pikoboard .pb-archive {
@@ -460,25 +579,25 @@
   max-height: 82vh;
   max-height: 82dvh;
   padding: 24px;
-  background: #131315;
-  border: 1px solid #34343c;
+  background: var(--pb-panel);
+  border: 1px solid var(--pb-line);
   border-radius: 12px;
   color: var(--pb-text);
-  box-shadow: 0 20px 70px #0008;
+  box-shadow: 0 20px 70px var(--pb-shadow);
 }
 .pb-task-modal .modal-content {
   margin: 0;
   padding: 0;
   overflow-y: auto;
   scrollbar-width: thin;
-  scrollbar-color: #50505d transparent;
+  scrollbar-color: var(--pb-scrollbar) transparent;
   background: transparent;
   min-height: 0;
 }
 .pb-task-modal .modal-close-button {
   top: 10px;
   right: 10px;
-  color: #9a9aaa;
+  color: var(--pb-muted);
   background: transparent;
   z-index: 2;
 }
@@ -525,8 +644,8 @@
   min-width: 0;
 }
 .pikoboard .pb-props .pb-status {
-  color: #ccc9e0;
-  background: #282633;
+  color: var(--pb-secondary);
+  background: var(--pb-accent-soft-hover);
 }
 .pikoboard .pb-date-button {
   min-width: 70px;
@@ -536,12 +655,12 @@
   width: 13px;
   height: 13px;
   flex: none;
-  color: #9d9baa;
+  color: var(--pb-muted);
 }
 .pikoboard .pb-date {
   width: 126px;
   font-size: 12px;
-  background: #1f1f24;
+  background: var(--pb-input);
   cursor: var(--pb-pointer);
 }
 .pikoboard .pb-body-preview {
@@ -552,12 +671,12 @@
   border-radius: 5px;
   font-size: 14px;
   line-height: 1.65;
-  color: #d5d4de;
+  color: var(--pb-secondary);
   user-select: text;
   overflow-wrap: anywhere;
 }
 .pikoboard .pb-body-preview:hover {
-  background: #ffffff02;
+  background: var(--pb-hover);
 }
 .pikoboard .pb-body-preview > p:first-child {
   margin-top: 0;
@@ -587,13 +706,13 @@
   font-size: 16px;
   font-weight: 550;
   line-height: 1.4;
-  color: #e8e7ef;
+  color: var(--pb-text);
 }
 .pikoboard .pb-body-preview ul {
   padding-left: 22px;
 }
 .pikoboard .pb-body-preview a {
-  color: #b8b4ed;
+  color: var(--pb-accent);
   text-decoration: underline;
   text-underline-offset: 3px;
   cursor: var(--pb-pointer);
@@ -619,13 +738,13 @@
   font-size: 14px;
   line-height: 1.65;
   white-space: pre-wrap;
-  color: #dfdee9;
+  color: var(--pb-secondary);
   box-shadow: none;
   scrollbar-width: thin;
 }
 .pikoboard .pb-placeholder {
   padding: 0;
-  color: #92919f;
+  color: var(--pb-muted);
   font-size: 14px;
   font-weight: 400;
   opacity: 0.7;
@@ -645,7 +764,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: #9d9baa;
+  color: var(--pb-muted);
   font-size: 12px;
   padding: 6px 7px;
 }
@@ -664,7 +783,7 @@
   min-width: 16px;
   min-height: 24px;
   margin-left: auto;
-  color: #aaa6cc;
+  color: var(--pb-accent);
   font-size: 11px;
   line-height: 1.3;
 }
@@ -674,7 +793,7 @@
 }
 .pikoboard .pb-save-state.is-error,
 .pikoboard .pb-save-state.pb-error {
-  color: #e0afa8;
+  color: var(--pb-danger);
 }
 .pikoboard .pb-checklist {
   display: flex;
@@ -697,36 +816,46 @@
   margin: 5px 0 0;
 }
 .pikoboard input[type='checkbox'] {
+  position: relative;
   appearance: none;
   -webkit-appearance: none;
   position: relative;
   width: 16px;
   height: 16px;
-  border: 1px solid #60606d;
+  border: 1px solid var(--pb-line-hover);
   border-radius: 4px;
-  background: #1c1c22;
+  background: var(--pb-card);
   background-image: none;
   box-shadow: none;
   cursor: var(--pb-pointer);
 }
 .pikoboard input[type='checkbox']:hover {
-  border-color: #a8a5e6;
+  border-color: var(--pb-accent);
 }
 .pikoboard input[type='checkbox']:checked {
-  border-color: #a8a5e6;
-  background-color: #a8a5e6;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='m2 6 2.5 2.5L10 3' fill='none' stroke='%231b1930' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  border-color: var(--pb-accent);
+  background-color: var(--pb-accent-fill);
+  background-image: none;
   background-position: center;
   background-repeat: no-repeat;
   background-size: 12px 12px;
 }
 .pikoboard input[type='checkbox']:checked:hover {
-  background-color: #c0bef0;
-  border-color: #c0bef0;
+  background-color: var(--pb-accent-hover);
+  border-color: var(--pb-accent-line);
 }
-.pikoboard input[type='checkbox']::before,
-.pikoboard input[type='checkbox']::after {
-  display: none;
+.pikoboard input[type='checkbox']::before { display: none; }
+.pikoboard input[type='checkbox']::after { display: none; }
+.pikoboard input[type='checkbox']:checked::after {
+  content: '';
+  display: block;
+  position: absolute;
+  inset: 1px;
+  width: auto;
+  height: auto;
+  transform: none;
+  background: var(--pb-on-accent);
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='m2 6 2.5 2.5L10 3' fill='none' stroke='black' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 12px 12px no-repeat;
 }
 .pikoboard input[type='checkbox']:focus-visible {
   outline: 2px solid var(--pb-accent);
@@ -749,10 +878,10 @@
   box-shadow: none;
 }
 .pikoboard .pb-check-text:hover {
-  background: #ffffff03;
+  background: var(--pb-hover);
 }
 .pikoboard .pb-check-row:has(input[type='checkbox']:checked) .pb-check-text {
-  color: #868492;
+  color: var(--pb-muted);
   text-decoration: line-through;
 }
 .pikoboard .pb-check-row > .pb-icon {
@@ -770,8 +899,8 @@
 .pikoboard .pb-journal {
   margin: 22px 0 0;
   padding: 10px 14px;
-  background: #1c1b22;
-  border: 1px solid #ffffff06;
+  background: var(--pb-card);
+  border: 1px solid var(--pb-line-soft);
   border-radius: 10px;
   text-align: left;
 }
@@ -801,7 +930,7 @@
   margin: 0;
   font-size: 13px;
   line-height: 20px;
-  color: #dbd9e5;
+  color: var(--pb-secondary);
   scrollbar-width: thin;
   box-shadow: none;
 }
@@ -818,12 +947,12 @@
   padding: 6px;
   border: 0;
   border-radius: 6px;
-  background: #302b49;
-  color: #c6c0ef;
+  background: var(--pb-accent-soft-hover);
+  color: var(--pb-accent);
 }
 .pikoboard .pb-send:hover {
-  background: #3f385e;
-  color: #e8e3ff;
+  background: var(--pb-accent-soft-hover);
+  color: var(--pb-text);
 }
 .pikoboard .pb-send svg {
   width: 15px;
@@ -836,11 +965,11 @@
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
-  scrollbar-color: #50505d transparent;
-  background: #141418;
+  scrollbar-color: var(--pb-scrollbar) transparent;
+  background: var(--pb-panel);
   padding: 10px 12px;
   border: 0;
-  border-top: 1px solid #2a2931;
+  border-top: 1px solid var(--pb-line);
   scrollbar-gutter: stable;
 }
 .pikoboard .pb-empty-feed {
@@ -855,7 +984,7 @@
   margin: 5px 0 9px;
   font-size: 10px;
   line-height: 1.4;
-  color: #9490a4;
+  color: var(--pb-muted);
 }
 .pikoboard .pb-day span {
   padding: 0 4px;
@@ -863,7 +992,7 @@
   border-radius: 0;
 }
 .pikoboard .pb-message {
-  background: #ffffff03;
+  background: var(--pb-hover);
   border-radius: 6px;
   border: 0;
   margin: 0 0 7px;
@@ -871,7 +1000,7 @@
   font-size: 13px;
   font-weight: 450;
   line-height: 1.5;
-  color: #cbc8d8;
+  color: var(--pb-secondary);
   overflow-wrap: anywhere;
 }
 .pikoboard .pb-message:last-child {
@@ -884,7 +1013,7 @@
   display: block;
   margin: 3px 0 0;
   text-align: right;
-  color: #9b96ad;
+  color: var(--pb-accent);
   font-size: 10px;
   font-weight: 400;
   line-height: 1.3;
@@ -895,7 +1024,7 @@
   padding: 12px 0 0;
   margin: 8px 0 0;
   border: 0;
-  border-top: 1px solid #34313d;
+  border-top: 1px solid var(--pb-line);
   border-radius: 0;
   min-height: 0;
   background: transparent;
@@ -904,8 +1033,8 @@
   display: none;
 }
 .pikoboard .pb-recover {
-  color: #e1baac;
-  background: #352b29;
+  color: var(--pb-danger);
+  background: var(--pb-hover);
   margin-top: 10px;
 }
 /* Custom pickers share the same subdued menu and a single chevron. */
@@ -917,10 +1046,10 @@
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 5px;
-  background: #1b1b21;
-  border: 1px solid #3b3a47;
+  background: var(--pb-card);
+  border: 1px solid var(--pb-line);
   border-radius: 8px;
-  box-shadow: 0 12px 32px #0008;
+  box-shadow: 0 12px 32px var(--pb-shadow);
   scrollbar-width: thin;
   color: var(--pb-text);
 }
@@ -936,19 +1065,19 @@
   border: 0;
   border-radius: 5px;
   text-align: left;
-  color: #cecadc;
+  color: var(--pb-secondary);
   font-size: 12px;
   line-height: 1.4;
 }
 .pikoboard .pb-option:hover,
 .pikoboard .pb-option:focus-visible {
-  background: #2d2a3b;
-  color: #e8e4f5;
+  background: var(--pb-accent-soft-hover);
+  color: var(--pb-text);
 }
 .pikoboard .pb-option[aria-selected='true'],
 .pikoboard .pb-option.is-selected {
-  background: #302c43;
-  color: #d2cbee;
+  background: var(--pb-accent-soft-hover);
+  color: var(--pb-accent);
 }
 .pikoboard .pb-option svg {
   width: 14px;
@@ -967,7 +1096,7 @@
   justify-content: space-between;
   gap: 6px;
   margin-bottom: 8px;
-  color: #d4cfe2;
+  color: var(--pb-secondary);
   font-size: 13px;
 }
 .pikoboard .pb-calendar-header > span {
@@ -1002,7 +1131,7 @@
   justify-content: center;
   height: 24px;
   font-size: 10px;
-  color: #9590a5;
+  color: var(--pb-muted);
 }
 .pikoboard .pb-calendar-day {
   display: flex;
@@ -1015,26 +1144,26 @@
   border: 1px solid transparent;
   border-radius: 5px;
   background: transparent;
-  color: #cec8dd;
+  color: var(--pb-secondary);
   font-size: 12px;
   line-height: 1;
 }
 .pikoboard .pb-calendar-day:hover {
-  background: #322e43;
+  background: var(--pb-accent-soft-hover);
 }
 .pikoboard .pb-calendar-day.is-today {
-  border-color: #77708e;
-  color: #d4cbed;
+  border-color: var(--pb-accent-line);
+  color: var(--pb-secondary);
 }
 .pikoboard .pb-calendar-day.is-selected,
 .pikoboard .pb-calendar-day[aria-selected='true'] {
-  background: var(--pb-accent);
-  color: #1b1930;
+  background: var(--pb-accent-fill);
+  color: var(--pb-on-accent);
   border-color: transparent;
 }
 .pikoboard .pb-calendar-day.is-outside,
 .pikoboard .pb-calendar-day.is-other-month {
-  color: #777185;
+  color: var(--pb-muted);
 }
 .pikoboard .pb-calendar-footer {
   display: flex;
@@ -1042,15 +1171,15 @@
   gap: 8px;
   padding-top: 8px;
   margin-top: 7px;
-  border-top: 1px solid #35313e;
+  border-top: 1px solid var(--pb-line);
 }
 .pikoboard .pb-calendar-footer button {
   font-size: 11px;
-  color: #a8a5e6;
+  color: var(--pb-accent);
 }
 .pb-prompt {
-  background: #151518;
-  border: 1px solid #363540;
+  background: var(--pb-panel);
+  border: 1px solid var(--pb-line);
   color: var(--pb-text);
   border-radius: 10px;
 }
@@ -1072,8 +1201,8 @@
 .pb-prompt button {
   border: 0;
   border-radius: 5px;
-  background: #a8a5e6;
-  color: #1d1930;
+  background: var(--pb-accent-fill);
+  color: var(--pb-on-accent);
   padding: 7px 10px;
   height: 34px;
   font-size: 12px;
@@ -1091,13 +1220,13 @@
   background: transparent;
   border: 0;
   border-radius: 0;
-  color: #b9b1d5;
+  color: var(--pb-secondary);
   font-size: 12px;
   line-height: 30px;
   box-shadow: none;
 }
 .pikoboard .pb-tags-input::placeholder {
-  color: #93909f;
+  color: var(--pb-muted);
 }
 .pikoboard .pb-tags-input:focus {
   color: var(--pb-text);
@@ -1150,14 +1279,14 @@
   min-height: 28px;
   margin: 0;
   padding: 6px;
-  background: #302b49;
+  background: var(--pb-accent-soft-hover);
   border: 0;
   border-radius: 6px;
-  color: #c6c0ef;
+  color: var(--pb-accent);
 }
 .pikoboard .pb-create-send:hover {
-  background: #3f385e;
-  color: #e8e3ff;
+  background: var(--pb-accent-soft-hover);
+  color: var(--pb-text);
 }
 .pikoboard .pb-create-send svg {
   width: 15px;
@@ -1271,25 +1400,25 @@
   gap: 8px;
 }
 .pikoboard .pb-trash {
-  color: #ef9aab;
-  background: #b7435c26;
-  border: 1px solid #db657c30;
+  color: var(--pb-danger);
+  background: var(--pb-danger-soft);
+  border: 1px solid var(--pb-danger-line);
   border-radius: 7px;
 }
 .pikoboard .pb-trash:hover {
-  color: #ffd4dd;
-  background: #c64d6942;
+  color: var(--pb-danger);
+  background: var(--pb-danger-soft);
 }
 .modal.pb-delete-modal {
   width: min(420px, calc(100vw - 32px));
   padding: 24px;
-  background: #131315;
-  border: 1px solid #343039;
+  background: var(--pb-panel);
+  border: 1px solid var(--pb-line);
   border-radius: 12px;
 }
 .pb-delete-modal .pikoboard {
   background: transparent;
-  color: #e8e8ed;
+  color: var(--pb-text);
 }
 .pb-delete-modal h3 {
   margin: 0 0 12px;
@@ -1303,7 +1432,7 @@
 }
 .pb-delete-hint {
   margin: 0;
-  color: #9898a3;
+  color: var(--pb-muted);
   font-size: 13px;
 }
 .pb-delete-actions {
@@ -1317,26 +1446,26 @@
   border-radius: 7px;
 }
 .pikoboard .pb-danger {
-  background: #a63750;
-  color: #fff0f3;
+  background: var(--pb-danger-fill);
+  color: var(--pb-on-danger);
 }
 .pikoboard .pb-danger:hover {
-  background: #bc415c;
-  color: white;
+  background: color-mix(in srgb, var(--pb-danger-fill) 85%, black);
+  color: var(--pb-on-danger);
 }
 
 /* The composer and newly added card are easy to locate; drag feedback stays on the two involved cards. */
 .pikoboard .pb-create-row {
   margin: 0 0 12px;
   padding: 10px 12px;
-  background: #a8a5e614;
-  border-left: 3px solid #a8a5e6;
+  background: var(--pb-accent-soft);
+  border-left: 3px solid var(--pb-accent);
   border-radius: 7px;
 }
 .pikoboard .pb-new-task {
-  background: #29243b;
-  border-color: #a8a5e6;
-  box-shadow: inset 3px 0 #a8a5e6;
+  background: var(--pb-accent-soft-hover);
+  border-color: var(--pb-accent);
+  box-shadow: inset 3px 0 var(--pb-accent-line);
   transition:
     background 0.6s,
     border-color 0.6s;
@@ -1347,7 +1476,7 @@
   flex: none;
   width: 10px;
   margin: 6px 1px 0 -5px;
-  color: #797583;
+  color: var(--pb-muted);
   opacity: 0.3;
   cursor: grab;
 }
@@ -1357,7 +1486,7 @@
 }
 .pikoboard .pb-task-head:hover .pb-grip {
   opacity: 1;
-  color: #bdb6d5;
+  color: var(--pb-secondary);
 }
 .pikoboard .pb-task.pb-insert-before,
 .pikoboard .pb-task.pb-insert-after {
@@ -1369,18 +1498,18 @@
 .pikoboard .pb-body-wrap {
   margin-top: 12px;
   padding: 10px 12px;
-  background: #19191e;
-  border: 1px solid #ffffff08;
+  background: var(--pb-card);
+  border: 1px solid var(--pb-line-soft);
   border-radius: 10px;
 }
 .pikoboard .pb-body-wrap:focus-within {
-  border-color: #a8a5e660;
+  border-color: var(--pb-accent-line);
 }
 .pikoboard .pb-body-wrap .pb-body-tools {
   display: none;
   margin-top: 8px;
   padding-top: 8px;
-  border-top: 1px solid #ffffff0b;
+  border-top: 1px solid var(--pb-line-soft);
 }
 .pikoboard .pb-body-wrap:focus-within .pb-body-tools {
   display: flex;
@@ -1417,7 +1546,7 @@
 .pikoboard .pb-rich-editor .cm-content {
   padding: 0 !important;
   min-height: 80px;
-  caret-color: #a8a5e6;
+  caret-color: var(--pb-accent);
 }
 .pikoboard .pb-rich-editor .cm-sizer {
   min-height: 0 !important;
@@ -1433,7 +1562,7 @@
   display: none;
 }
 .pikoboard .pb-rich-editor .cm-placeholder {
-  color: #9898a3;
+  color: var(--pb-muted);
 }
 .pikoboard .pb-rich-editor .cm-focused {
   outline: none;
@@ -1490,30 +1619,30 @@
   border: 1px solid transparent;
   border-radius: 6px;
   background: transparent;
-  color: #9999a8;
+  color: var(--pb-muted);
   font-size: 12px;
   font-weight: 400;
   line-height: 1.4;
   white-space: nowrap;
 }
 .pikoboard .pb-domain:hover {
-  background: #ffffff06;
-  color: #d8d7e2;
+  background: var(--pb-hover);
+  color: var(--pb-secondary);
 }
 .pikoboard .pb-domain.is-active {
-  background: #a8a5e615;
-  border-color: #a8a5e62b;
-  color: #d3cff3;
+  background: var(--pb-accent-soft);
+  border-color: var(--pb-accent-line);
+  color: var(--pb-accent);
   font-weight: 550;
 }
 .pikoboard .pb-domain-count {
   font-size: 10px;
   font-weight: 400;
-  color: #888897;
+  color: var(--pb-muted);
   font-variant-numeric: tabular-nums;
 }
 .pikoboard .pb-domain.is-active .pb-domain-count {
-  color: #b0a9d3;
+  color: var(--pb-accent);
 }
 .pikoboard .pb-focus {
   grid-template-columns: minmax(0, 1fr);
@@ -1576,8 +1705,8 @@
   gap: 3px 5px;
   margin: 0 11px 11px;
   padding: 9px 10px;
-  background: #a8a5e610;
-  border: 1px solid #a8a5e620;
+  background: var(--pb-accent-soft);
+  border: 1px solid var(--pb-accent-line);
   border-radius: 6px;
   min-width: 0;
 }
@@ -1587,7 +1716,7 @@
   align-items: center;
   gap: 5px;
   margin: 0 0 2px;
-  color: #b7aee0;
+  color: var(--pb-accent);
   font-size: 10px;
   font-weight: 550;
   line-height: 1.4;
@@ -1601,7 +1730,7 @@
   grid-column: 1;
   min-width: 0;
   margin: 0;
-  color: #d7d2ea;
+  color: var(--pb-secondary);
   font-size: 12px;
   line-height: 1.45;
   overflow-wrap: anywhere;
@@ -1627,7 +1756,7 @@
   background: transparent;
   border: 0;
   border-radius: 5px;
-  color: #9d95bc;
+  color: var(--pb-accent);
   font-size: 11px;
   line-height: 1.2;
 }
@@ -1638,8 +1767,8 @@
 }
 .pikoboard .pb-next-edit:hover,
 .pikoboard .pb-next-done:hover {
-  color: #e0d8ff;
-  background: #a8a5e61c;
+  color: var(--pb-text);
+  background: var(--pb-accent-soft-hover);
 }
 .pb-task-modal .pikoboard .pb-next-step {
   margin: 14px 0 0;
@@ -1651,8 +1780,8 @@
 
 /* The expanded card contains both reading and writing, with no empty fixed-height panel. */
 .pikoboard .pb-card-journal {
-  border-top: 1px solid #2b2933;
-  background: #141418;
+  border-top: 1px solid var(--pb-line);
+  background: var(--pb-panel);
   min-width: 0;
 }
 .pikoboard .pb-feed {
@@ -1674,7 +1803,7 @@
   max-height: 220px;
 }
 .pikoboard .pb-message {
-  background: #ffffff04;
+  background: var(--pb-hover);
   font-size: 12px;
   line-height: 1.45;
   padding: 8px 9px;
@@ -1714,12 +1843,12 @@
 .pikoboard .pb-message-text blockquote {
   margin: 5px 0;
   padding: 2px 8px;
-  border-left: 2px solid #8d83bc;
-  color: #bcb7d1;
+  border-left: 2px solid var(--pb-accent-line);
+  color: var(--pb-secondary);
 }
 .pikoboard .pb-message-text a,
 .pikoboard .pb-next-text a {
-  color: #bdb6ef;
+  color: var(--pb-accent);
   text-decoration: underline;
   text-underline-offset: 2px;
   overflow-wrap: anywhere;
@@ -1730,7 +1859,7 @@
   margin: 5px 0;
   overflow: auto;
   font-size: 11px;
-  background: #0e0e12;
+  background: var(--pb-bg);
   border-radius: 5px;
 }
 .pikoboard .pb-message-text code {
@@ -1764,7 +1893,7 @@
   align-items: center;
   gap: 4px;
   margin: 0 0 4px;
-  color: #9fafd8;
+  color: var(--pb-accent);
   font-size: 10px;
   font-weight: 550;
   line-height: 1.4;
@@ -1784,7 +1913,7 @@
   margin: 0;
   padding: 8px 10px;
   border: 0;
-  border-top: 1px solid #ffffff09;
+  border-top: 1px solid var(--pb-line-soft);
   background: transparent;
   border-radius: 0;
 }
@@ -1808,19 +1937,19 @@
   border: 0;
   border-radius: 4px;
   background: transparent;
-  color: #9690a6;
+  color: var(--pb-muted);
   font-size: 10px;
   line-height: 1.4;
   font-weight: 400;
 }
 .pikoboard .pb-composer-mode.is-active {
-  background: #a8a5e613;
-  color: #c4bce8;
+  background: var(--pb-accent-soft);
+  color: var(--pb-secondary);
   font-weight: 550;
 }
 .pikoboard .pb-composer-mode:hover {
-  background: #ffffff07;
-  color: #d0c9e3;
+  background: var(--pb-hover);
+  color: var(--pb-secondary);
 }
 .pikoboard .pb-composer-mode svg {
   width: 11px;
@@ -1841,7 +1970,7 @@
   background: transparent;
   border: 0;
   border-radius: 0;
-  color: #dbd9e5;
+  color: var(--pb-secondary);
   font-size: 12px;
   line-height: 19px;
   box-shadow: none;
@@ -1852,7 +1981,7 @@
   outline: none;
   border: 0;
   background: transparent;
-  box-shadow: inset 0 -1px 0 #a8a5e65c;
+  box-shadow: inset 0 -1px 0 var(--pb-accent-line);
 }
 .pikoboard .pb-composer-actions {
   display: none;
@@ -1875,7 +2004,7 @@
   background: transparent;
   border: 0;
   border-radius: 4px;
-  color: #a39bb8;
+  color: var(--pb-accent);
   font-size: 11px;
   line-height: 1.4;
 }
@@ -1884,8 +2013,8 @@
   height: 13px;
 }
 .pikoboard .pb-composer-actions .pb-attach:hover {
-  background: #ffffff06;
-  color: #d0c7e6;
+  background: var(--pb-hover);
+  color: var(--pb-secondary);
 }
 .pikoboard .pb-composer-actions .pb-send {
   margin: 0 0 0 auto;
@@ -1897,7 +2026,7 @@
 }
 .pikoboard .pb-compose-error {
   margin: 5px 0 0;
-  color: #e4a7af;
+  color: var(--pb-danger);
   font-size: 11px;
   line-height: 1.4;
   overflow-wrap: anywhere;
@@ -1963,8 +2092,8 @@
 .pikoboard .pb-message-text *::selection,
 .pikoboard .pb-next-text::selection,
 .pikoboard .pb-next-text *::selection {
-  background: #a8a5e64d;
-  color: #f3efff;
+  background: var(--pb-selection);
+  color: var(--pb-text);
 }
 .pikoboard .pb-message-footer {
   display: flex;
@@ -1975,7 +2104,7 @@
 }
 .pikoboard .pb-message-footer time {
   margin: 0;
-  color: #9690a6;
+  color: var(--pb-muted);
 }
 .pikoboard .pb-message-menu {
   width: 24px;
@@ -1983,7 +2112,7 @@
   min-height: 22px;
   min-width: 24px;
   padding: 4px;
-  color: #9b94b0;
+  color: var(--pb-accent);
   background: transparent;
   border: 0;
   border-radius: 4px;
@@ -1993,8 +2122,8 @@
   height: 14px;
 }
 .pikoboard .pb-message-menu:hover {
-  background: #a8a5e61c;
-  color: #e1dafa;
+  background: var(--pb-accent-soft-hover);
+  color: var(--pb-text);
 }
 .pikoboard .pb-next-step {
   grid-template-columns: minmax(0, 1fr) auto;
@@ -2021,7 +2150,7 @@
   min-height: 25px;
   margin: 4px 0 0;
   padding: 4px 7px;
-  border: 1px solid #a8a5e626;
+  border: 1px solid var(--pb-accent-line);
   font-size: 10px;
 }
 .pikoboard .pb-composer-actions .pb-send.pb-save-step {
@@ -2029,16 +2158,16 @@
   min-width: 0;
   padding: 5px 9px;
   font-size: 11px;
-  background: #a8a5e6;
-  color: #201a35;
+  background: var(--pb-accent-fill);
+  color: var(--pb-on-accent);
   border: 0;
   border-radius: 5px;
 }
 .modal.pb-message-editor {
   width: min(580px, calc(100vw - 32px));
   padding: 24px;
-  background: #131315;
-  border: 1px solid #343039;
+  background: var(--pb-panel);
+  border: 1px solid var(--pb-line);
   border-radius: 12px;
 }
 .pb-message-editor .pikoboard {
@@ -2055,16 +2184,16 @@
   max-height: 50vh;
   resize: vertical;
   padding: 12px;
-  color: #dedbe8;
-  background: #1b1a21;
-  border: 1px solid #363240;
+  color: var(--pb-secondary);
+  background: var(--pb-card);
+  border: 1px solid var(--pb-line);
   border-radius: 7px;
   font-size: 13px;
   line-height: 1.6;
 }
 .pb-notice-undo {
   margin-left: 6px;
-  color: #c5baff;
+  color: var(--pb-accent);
   background: transparent;
   border: 0;
   text-decoration: underline;
@@ -2091,7 +2220,7 @@
   min-height: 26px;
   margin: -2px 0 0;
   padding: 5px;
-  color: #9d95bc;
+  color: var(--pb-accent);
   border: 0;
   border-radius: 5px;
   background: transparent;
@@ -2101,8 +2230,8 @@
   height: 13px;
 }
 .pikoboard .pb-next-remove:hover {
-  background: #a8a5e61c;
-  color: #e0d8ff;
+  background: var(--pb-accent-soft-hover);
+  color: var(--pb-text);
 }
 
 /* Compact anchored actions, styled consistently with the board. */
@@ -2110,10 +2239,10 @@
   min-width: 180px;
   max-width: min(270px, calc(100vw - 24px));
   padding: 5px;
-  background: #1b1a21;
-  border: 1px solid #3b364b;
+  background: var(--pb-card);
+  border: 1px solid var(--pb-line);
   border-radius: 9px;
-  box-shadow: 0 10px 32px #0009;
+  box-shadow: 0 10px 32px var(--pb-shadow);
 }
 .pikoboard .pb-menu-item {
   display: flex;
@@ -2126,7 +2255,7 @@
   background: transparent;
   border: 0;
   border-radius: 5px;
-  color: #d6d1e2;
+  color: var(--pb-secondary);
   line-height: 1.35;
   font-size: 12px;
   font-weight: 450;
@@ -2137,18 +2266,18 @@
 }
 .pikoboard .pb-menu-item:hover,
 .pikoboard .pb-menu-item:focus-visible {
-  background: #a8a5e619;
-  color: #f0eaff;
+  background: var(--pb-accent-soft);
+  color: var(--pb-text);
   outline: 0;
   box-shadow: none;
 }
 .pikoboard .pb-menu-item.is-danger {
-  color: #e697a6;
+  color: var(--pb-danger);
 }
 .pikoboard .pb-menu-item.is-danger:hover,
 .pikoboard .pb-menu-item.is-danger:focus-visible {
-  background: #e36a8520;
-  color: #ffc0cc;
+  background: var(--pb-danger-soft);
+  color: var(--pb-danger);
 }
 .pikoboard .pb-menu-icon {
   display: flex;
@@ -2169,7 +2298,7 @@
 .pikoboard .pb-menu-separator {
   height: 1px;
   margin: 4px 7px;
-  background: #ffffff0d;
+  background: var(--pb-hover);
 }
 
 .pikoboard .pb-composer-actions .pb-compose-checklist {
@@ -2178,15 +2307,15 @@
   gap: 5px;
   min-height: 26px;
   padding: 4px 6px;
-  color: #a39bb8;
+  color: var(--pb-accent);
   border: 0;
   border-radius: 4px;
   background: transparent;
   font-size: 11px;
 }
 .pikoboard .pb-composer-actions .pb-compose-checklist:hover {
-  color: #d0c7e6;
-  background: #ffffff06;
+  color: var(--pb-secondary);
+  background: var(--pb-hover);
 }
 .pikoboard .pb-next-text ul,
 .pikoboard .pb-next-text ol {
@@ -2210,9 +2339,9 @@
   cursor: var(--pb-pointer);
 }
 .pikoboard .pb-next-text .task-list-item.is-checked {
-  color: #9690a6;
+  color: var(--pb-muted);
   text-decoration: line-through;
-  text-decoration-color: #9690a66b;
+  text-decoration-color: var(--pb-muted);
 }
 
 /* File boards share one compact layout; extra columns scroll horizontally. */
@@ -2262,8 +2391,8 @@
   width: min(640px, 94vw);
   max-height: 90vh;
   padding: 24px;
-  background: #131316;
-  border: 1px solid #35333e;
+  background: var(--pb-panel);
+  border: 1px solid var(--pb-line);
   border-radius: 16px;
 }
 .pb-config-modal .modal-content {
@@ -2283,7 +2412,7 @@
   gap: 10px;
 }
 .pikoboard .pb-config-column {
-  border: 1px solid #ffffff12;
+  border: 1px solid var(--pb-line-soft);
   border-radius: 12px;
   padding: 12px;
 }
@@ -2307,7 +2436,7 @@
 }
 .pikoboard input.pb-config-column-name:focus {
   outline: none;
-  border-color: #a9a3e87a;
+  border-color: var(--pb-accent-line);
   box-shadow: none;
 }
 .pikoboard .pb-column-appearance {
@@ -2323,13 +2452,13 @@
   gap: 12px;
   flex: 1;
   min-width: 0;
-  color: #aaa8b9;
+  color: var(--pb-secondary);
   font-size: 12px;
 }
 .pikoboard .pb-opacity-control output {
   text-align: right;
   font-variant-numeric: tabular-nums;
-  color: #aba8bd;
+  color: var(--pb-secondary);
 }
 .pikoboard input.pb-opacity-range {
   appearance: none;
@@ -2350,7 +2479,7 @@
   height: 4px;
   border: 0;
   border-radius: 3px;
-  background: #47444f;
+  background: var(--pb-hover);
   box-shadow: none;
 }
 .pikoboard input.pb-opacity-range::-webkit-slider-thumb {
@@ -2360,34 +2489,34 @@
   transform: none;
   width: 14px;
   height: 14px;
-  border: 2px solid #211f29;
+  border: 2px solid var(--pb-line);
   border-radius: 50%;
-  background: #b2a9ed;
+  background: var(--pb-accent-fill);
   margin: -5px 0 0;
-  box-shadow: 0 0 0 1px #b2a9ed66;
+  box-shadow: 0 0 0 1px var(--pb-accent-line);
 }
 .pikoboard input.pb-opacity-range:focus-visible::-webkit-slider-thumb {
-  box-shadow: 0 0 0 3px #b2a9ed44;
+  box-shadow: 0 0 0 3px var(--pb-accent-line);
 }
 .pikoboard .pb-symbol-trigger {
   width: 36px;
   height: 36px;
   padding: 8px;
-  border: 1px solid #ffffff16;
-  background: #ffffff05;
+  border: 1px solid var(--pb-line-soft);
+  background: var(--pb-hover);
   border-radius: 8px;
-  color: #c5bedf;
+  color: var(--pb-secondary);
   font-size: 19px;
   display: grid;
   place-items: center;
 }
 .pikoboard .pb-symbol-trigger.is-empty {
-  color: #858291;
+  color: var(--pb-muted);
   border-style: dashed;
 }
 .pikoboard .pb-symbol-trigger:hover {
-  background: #aaa3e817;
-  border-color: #aaa3e859;
+  background: var(--pb-accent-soft);
+  border-color: var(--pb-accent-line);
 }
 .pikoboard .pb-symbol-trigger svg {
   width: 18px;
@@ -2536,7 +2665,7 @@
 .pikoboard .pb-symbol-favorite[aria-pressed='true'] svg { fill: currentColor; }
 .pikoboard .pb-symbol-none { flex-shrink: 0; width: 100%; text-align: left; }
 .pikoboard .pb-symbol-none:hover,
-.pikoboard .pb-symbol-more:hover { color: var(--pb-text); background: #ffffff07; }
+.pikoboard .pb-symbol-more:hover { color: var(--pb-text); background: var(--pb-hover); }
 .pikoboard .pb-symbol-custom { display: flex; gap: 5px; flex-shrink: 0; }
 .pikoboard .pb-symbol-custom input {
   width: 100%;
@@ -2560,7 +2689,7 @@
   height: 25px;
   padding: 0;
   background: var(--swatch);
-  border: 3px solid #19191e;
+  border: 3px solid var(--pb-line);
   border-radius: 50%;
   box-shadow: 0 0 0 1px transparent;
 }
@@ -2569,7 +2698,7 @@
 }
 .pikoboard .pb-color-swatch:hover {
   background: var(--swatch);
-  box-shadow: 0 0 0 2px #ffffff44;
+  box-shadow: 0 0 0 2px var(--pb-shadow);
 }
 .pikoboard input.pb-color-custom {
   appearance: none;
@@ -2577,8 +2706,8 @@
   height: 30px;
   flex-shrink: 0;
   padding: 3px;
-  background: #ffffff05;
-  border: 1px solid #ffffff25;
+  background: var(--pb-hover);
+  border: 1px solid var(--pb-line);
   border-radius: 8px;
   cursor: pointer;
 }
@@ -2595,28 +2724,28 @@
 }
 .pikoboard .pb-new-column-preview {
   padding: 12px;
-  border: 1px solid #ffffff16;
+  border: 1px solid var(--pb-line-soft);
   border-radius: 10px;
 }
 .pikoboard .pb-config-field {
   display: grid;
   gap: 7px;
   font-size: 12px;
-  color: #aaa9b8;
+  color: var(--pb-secondary);
   min-width: 0;
 }
 .pikoboard input.pb-config-input {
   width: 100%;
   min-width: 0;
-  color: #e4e3ec;
-  background: #ffffff05;
-  border: 1px solid #ffffff18;
+  color: var(--pb-text);
+  background: var(--pb-hover);
+  border: 1px solid var(--pb-line-soft);
   border-radius: 8px;
   padding: 8px 10px;
   height: 36px;
 }
 .pikoboard input.pb-config-input:focus {
-  outline: 1px solid #a9a3e8;
+  outline: 1px solid var(--pb-accent);
   box-shadow: none;
 }
 .pikoboard .pb-folder-heading {
@@ -2626,11 +2755,11 @@
   gap: 8px;
   margin-bottom: 8px;
   font-size: 13px;
-  color: #d0ccdc;
+  color: var(--pb-secondary);
 }
 .pikoboard .pb-folder-origin {
   font-size: 11px;
-  color: #8e899f;
+  color: var(--pb-muted);
 }
 .pikoboard .pb-folder-input {
   display: flex;
@@ -2653,7 +2782,7 @@
 .pikoboard .pb-config-actions > button:not(.pb-new) {
   background: transparent;
   border: 0;
-  color: #b4b2c5;
+  color: var(--pb-secondary);
 }
 .pikoboard .pb-error:empty {
   display: none;
@@ -2669,14 +2798,14 @@
   margin: 4px 0;
   padding: 9px;
   border-radius: 10px;
-  border: 1px dashed #aca3d12b;
-  background: #ffffff03;
-  color: #a7a0bd;
+  border: 1px dashed var(--pb-accent-line);
+  background: var(--pb-hover);
+  color: var(--pb-accent);
 }
 .pikoboard .pb-add-column:hover {
-  background: #aaa3e817;
-  border-color: #aaa3e87a;
-  color: #d1c9f2;
+  background: var(--pb-accent-soft);
+  border-color: var(--pb-accent-line);
+  color: var(--pb-secondary);
 }
 .pikoboard .pb-column-handle {
   cursor: grab;
@@ -2684,7 +2813,7 @@
   user-select: none;
 }
 .pikoboard .pb-column-handle:focus-visible {
-  outline: 1px solid #afa4e888;
+  outline: 1px solid var(--pb-accent-line);
   border-radius: 5px;
 }
 .pikoboard .pb-column-handle > span:not(.pb-status-icon) {
@@ -2694,8 +2823,8 @@
 .pikoboard .pb-column-dragging {
   position: relative;
   z-index: 3;
-  border-color: #b3a6ed99;
-  box-shadow: 0 6px 30px #0006;
+  border-color: var(--pb-accent-line);
+  box-shadow: 0 6px 30px var(--pb-shadow);
 }
 .pikoboard .pb-column-dragging .pb-column-handle {
   cursor: grabbing;
@@ -2711,7 +2840,7 @@
   position: absolute;
   width: 2px;
   border-radius: 2px;
-  background: #b3a6ed;
+  background: var(--pb-accent-fill);
   top: 10px;
   bottom: 10px;
   pointer-events: none;

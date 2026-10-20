@@ -12,6 +12,24 @@ class PikoBoardSettings extends PluginSettingTab {
     containerEl.empty();
     const save = (patch) =>
       this.plugin.saveSettings(patch).catch((e) => new Notice(errorMessage(e)));
+    new Setting(containerEl)
+      .setName('Оформление')
+      .addDropdown((field) => {
+        field.addOption('obsidian', 'Как в Obsidian');
+        field.addOption('piko', 'Piko — тёмная');
+        field.setValue(this.plugin.settings.appearance);
+        field.onChange(async (appearance) => {
+          field.selectEl.disabled = true;
+          try {
+            await this.plugin.saveSettings({ appearance });
+          } catch (error) {
+            field.setValue(this.plugin.settings.appearance);
+            new Notice(errorMessage(error));
+          } finally {
+            field.selectEl.disabled = false;
+          }
+        });
+      });
     for (const [key, label] of [
       ['boardsFolder', 'Папка новых досок'],
       ['tasksFolder', 'Папка новых задач'],

@@ -14,6 +14,7 @@ const S = require('./storage/task-store.js');
 const B = require('./storage/board-store.js');
 const { el, icon } = require('./ui/elements.js');
 const { errorMessage } = require('./ui/format.js');
+const { appearanceController } = require('./ui/appearance.js');
 const { actionMenu, closeActionMenu } = require('./ui/menus.js');
 const {
   AskModal,
@@ -42,6 +43,7 @@ class PikoBoard extends Plugin {
     this.boards = new B.BoardStore(this.app);
     await this.boards.list();
     await this.initializeStorage();
+    this.appearance = appearanceController(this);
     this.addSettingTab(new PikoBoardSettings(this.app, this));
     this.registerView(TYPE, (leaf) => new BoardView(leaf, this));
     this.registerView(FILE_TYPE, (leaf) => new BoardFileView(leaf, this));
@@ -143,6 +145,12 @@ class PikoBoard extends Plugin {
     return this.persist();
   }
   async initializeStorage() {
+    // Existing installations keep their chosen black/purple appearance.
+    // A clean installation follows Obsidian unless the user selects Piko.
+    if (this.data.settings && this.data.settings.appearance === undefined) {
+      this.data.settings.appearance = 'piko';
+      await this.persist();
+    }
     if (!this.data.settings) {
       const legacyPath = this.app.vault.configDir + '/plugins/tasknotes/data.json';
       let legacy = {};
@@ -174,11 +182,25 @@ class PikoBoard extends Plugin {
       onScheduleChange: () => this.persist(),
     });
   }
-  async saveSettings(patch) {
-    this.settings = S.settingsFrom({ ...this.settings, ...patch });
-    this.data.settings = this.settings;
-    await this.persist();
-    this.refresh();
+  saveSettings(patch) {
+    // Build each patch from the last committed settings, including when two
+    // controls change before the preceding disk write has finished.
+    this.settingsSave = (this.settingsSave || Promise.resolve()).catch(() => {}).then(async () => {
+      const next = S.settingsFrom({ ...this.settings, ...patch });
+      const previous = this.data.settings;
+      this.data.settings = next;
+      try {
+        await this.persist();
+      } catch (error) {
+        if (this.data.settings === next) this.data.settings = previous;
+        throw error;
+      }
+      this.settings = next;
+      this.appearance?.apply();
+      // Changing colours must not rebuild cards or interrupt an active editor.
+      if (Object.keys(patch).some((key) => key !== 'appearance')) this.refresh();
+    });
+    return this.settingsSave;
   }
   api() {
     return this.store;

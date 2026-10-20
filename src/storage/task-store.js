@@ -12,6 +12,7 @@ const FIELDS = {
   archiveTag: 'archived',
 };
 const DEFAULT_SETTINGS = {
+  appearance: 'obsidian',
   tasksFolder: 'Задачи',
   attachmentsFolder: 'Вложения',
   materialsFolder: 'Материалы',
@@ -85,6 +86,7 @@ function settingsFrom(saved = {}) {
       ? Number(result.archiveDays)
       : 7;
   result.completedStatuses = [...new Set(['done', ...strings(result.completedStatuses)])];
+  result.appearance = result.appearance === 'piko' ? 'piko' : 'obsidian';
   return result;
 }
 function migrateSettings(legacy = {}) {
