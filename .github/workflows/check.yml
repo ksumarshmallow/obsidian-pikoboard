@@ -15,6 +15,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - run: npm ci --ignore-scripts
       # Check committed assets before npm test rebuilds them.
       - run: npm run release:check
       - run: npm test

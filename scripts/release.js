@@ -14,6 +14,9 @@ function validate(root, tag) {
   demand(VERSION.test(manifest.version), 'Version must be x.y.z without a prefix');
   demand(VERSION.test(manifest.minAppVersion), 'Minimum app version must be x.y.z');
   demand(pkg.version === manifest.version, 'Package and manifest versions differ');
+  const lock = json('package-lock.json');
+  demand(lock.version === pkg.version && lock.packages?.['']?.version === pkg.version,
+    'Dependency lockfile version differs from package.json');
   demand(versions[manifest.version] === manifest.minAppVersion, 'Missing or mismatched compatibility entry');
   demand(!tag || tag === manifest.version, 'Release tag must exactly match manifest.version');
   demand(typeof manifest.description === 'string' && manifest.description.length <= 250 &&

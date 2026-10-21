@@ -4,7 +4,7 @@ This repository prepares an installable plugin. A passing local check is not app
 
 ## Prepare a version
 
-1. Set the same numeric `x.y.z` version in `manifest.json` and `package.json`. Add its minimum supported Obsidian version to `versions.json`.
+1. Set the same numeric `x.y.z` version in `manifest.json` and `package.json`. Run `npm install --package-lock-only --ignore-scripts` to update `package-lock.json`. Add its minimum supported Obsidian version to `versions.json`.
 2. Keep the manifest description short, in English and ending with a period. Retain `pikoboard` as the plugin ID.
 3. Update the user guide and `docs/release-notes.md` for the delivered behavior. Do not include private vault details or internal development logs.
 4. Run the checks below, inspect the diff and commit source plus regenerated runtime files.
@@ -39,7 +39,7 @@ Use a disposable vault containing synthetic data and no other community plugins.
 
 Push the reviewed commit to GitHub. Create and push a tag exactly matching `manifest.json`, with no `v` prefix.
 
-In **Actions → Draft release**, run the workflow with that version. It validates the tag, tests the code and creates a **draft** GitHub release with the packaged assets. It will fail if that release already exists; review the existing draft instead of overwriting it.
+In **Actions → Draft release**, run the workflow with that version. It validates the tag, tests the code, creates GitHub artifact attestations and attaches only `main.js`, `manifest.json` and `styles.css` to a **draft** GitHub release. The local license and checksum files stay in the local package; license notices are also embedded in `main.js`. It will fail if that release already exists; review the existing draft instead of overwriting it.
 
 Inspect the draft's notes and download its assets for one final clean-vault check. Publish it when ready. A draft is not available to Obsidian's public installer.
 

@@ -19,6 +19,7 @@ function fixture(t) {
     author: 'Example', description: 'Plan tasks in notes.', isDesktopOnly: false };
   write('manifest.json', manifest);
   write('package.json', { version: '1.2.3', license: 'MIT' });
+  write('package-lock.json', { version: '1.2.3', packages: { '': { version: '1.2.3' } } });
   write('versions.json', { '1.2.3': '1.14.4' });
   for (const name of ['LICENSE', 'THIRD-PARTY-LICENSES.txt', 'README.md', 'docs/usage.md', 'docs/releasing.md'])
     write(name, 'Fixture text');
@@ -60,4 +61,11 @@ test('distribution includes only allowlisted assets with matching checksums, eve
   }
   fs.unlinkSync(path.join(root, 'LICENSE'));
   assert.throws(() => pack(root), /ENOENT/);
+});
+
+test('release rejects a stale dependency lockfile before packaging', (t) => {
+  const { root, write } = fixture(t);
+  write('package-lock.json', { version: '1.2.2', packages: { '': { version: '1.2.2' } } });
+  assert.throws(() => pack(root, '1.2.3'), /lockfile version differs/);
+  assert.equal(fs.existsSync(path.join(root, 'dist', 'pikoboard')), false);
 });

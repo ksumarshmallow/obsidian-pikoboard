@@ -1,10 +1,7 @@
-PikoBoard keeps your tasks on a board and their context in Markdown notes.
+This maintenance release improves theme compatibility and release verification.
 
-- Create boards with custom columns, colors and icons. Drag tasks and columns to organize your work.
-- Add descriptions, checklists, linked research and attachments to each task.
-- Pin a next step and keep a dated journal directly on the board.
-- Find work across boards with projects, tags, search and saved filters.
-- Track due dates, reuse task templates and archive completed work automatically.
-- Undo task moves, property changes and manual archiving.
+- Reduce forced style overrides in project badges and the description editor.
+- Simplify checklist and menu styling, and respect reduced motion for newly created tasks.
+- Publish the three Obsidian runtime assets with GitHub build provenance and a dependency lockfile for reproducible verification.
 
-Requires Obsidian 1.14.4 or newer. Tested on macOS; mobile behavior has not yet been verified.
+Requires Obsidian 1.14.4 or newer.

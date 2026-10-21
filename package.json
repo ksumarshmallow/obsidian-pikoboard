@@ -1,6 +1,6 @@
 {
   "name": "obsidian-pikoboard",
-  "version": "0.12.1",
+  "version": "0.12.2",
   "private": true,
   "scripts": {
     "test": "npm run build && node --test",

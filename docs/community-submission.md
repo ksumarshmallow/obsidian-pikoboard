@@ -37,7 +37,7 @@ Desktop interaction checks were performed on macOS with Obsidian 1.14.4. Mobile 
 - [License](../LICENSE) and [third-party notices](../THIRD-PARTY-LICENSES.txt)
 - [Release checks and manual validation checklist](releasing.md)
 
-The local validation suite has 248 passing tests and 65 JavaScript syntax checks. Release validation checks version consistency and packaging requirements. The release package contains `main.js`, `manifest.json`, `styles.css`, license notices and `SHA256SUMS`; it excludes vault notes and plugin state. Automated tests are not a substitute for Obsidian's review.
+The local validation suite has 249 passing tests and 65 JavaScript syntax checks. Release validation checks version consistency and packaging requirements. The public release contains `main.js`, `manifest.json` and `styles.css`, with license notices embedded in the JavaScript and GitHub attestations for the runtime assets. The local package also includes separate license notices and `SHA256SUMS`. Neither package includes vault notes or plugin state. Automated tests are not a substitute for Obsidian's review.
 
 ## Submission handoff
 

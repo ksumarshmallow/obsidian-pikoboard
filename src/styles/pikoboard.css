@@ -201,6 +201,7 @@ body:is([data-pikoboard-appearance="piko"], [data-pikoboard-appearance="piko-lig
 .pikoboard [hidden],
 .pb-task-modal [hidden],
 .pb-prompt [hidden] {
+  /* Component display rules must not reveal collapsed content. */
   display: none !important;
 }
 .pikoboard {
@@ -512,7 +513,7 @@ body:is([data-pikoboard-appearance="piko"], [data-pikoboard-appearance="piko-lig
 .pikoboard select {
   appearance: none;
   -webkit-appearance: none;
-  background-image: none !important;
+  background-image: none;
   padding-right: 10px;
   cursor: var(--pb-pointer);
 }
@@ -683,35 +684,35 @@ body:is([data-pikoboard-appearance="piko"], [data-pikoboard-appearance="piko-lig
   line-height: 1.3;
   overflow-wrap: anywhere;
 }
-.pikoboard .pb-color-0 {
+.pikoboard .pb-project.pb-color-0 {
   --pb-project-color: var(--pb-blue);
-  background: color-mix(in srgb, var(--pb-project-color) 15%, var(--pb-card)) !important;
-  color: color-mix(in srgb, var(--pb-project-color) 40%, var(--pb-text)) !important;
+  background: color-mix(in srgb, var(--pb-project-color) 15%, var(--pb-card));
+  color: color-mix(in srgb, var(--pb-project-color) 40%, var(--pb-text));
 }
-.pikoboard .pb-color-1 {
+.pikoboard .pb-project.pb-color-1 {
   --pb-project-color: var(--pb-purple);
-  background: color-mix(in srgb, var(--pb-project-color) 15%, var(--pb-card)) !important;
-  color: color-mix(in srgb, var(--pb-project-color) 40%, var(--pb-text)) !important;
+  background: color-mix(in srgb, var(--pb-project-color) 15%, var(--pb-card));
+  color: color-mix(in srgb, var(--pb-project-color) 40%, var(--pb-text));
 }
-.pikoboard .pb-color-2 {
+.pikoboard .pb-project.pb-color-2 {
   --pb-project-color: var(--pb-cyan);
-  background: color-mix(in srgb, var(--pb-project-color) 15%, var(--pb-card)) !important;
-  color: color-mix(in srgb, var(--pb-project-color) 40%, var(--pb-text)) !important;
+  background: color-mix(in srgb, var(--pb-project-color) 15%, var(--pb-card));
+  color: color-mix(in srgb, var(--pb-project-color) 40%, var(--pb-text));
 }
-.pikoboard .pb-color-3 {
+.pikoboard .pb-project.pb-color-3 {
   --pb-project-color: var(--pb-orange);
-  background: color-mix(in srgb, var(--pb-project-color) 15%, var(--pb-card)) !important;
-  color: color-mix(in srgb, var(--pb-project-color) 40%, var(--pb-text)) !important;
+  background: color-mix(in srgb, var(--pb-project-color) 15%, var(--pb-card));
+  color: color-mix(in srgb, var(--pb-project-color) 40%, var(--pb-text));
 }
-.pikoboard .pb-color-4 {
+.pikoboard .pb-project.pb-color-4 {
   --pb-project-color: var(--pb-pink);
-  background: color-mix(in srgb, var(--pb-project-color) 15%, var(--pb-card)) !important;
-  color: color-mix(in srgb, var(--pb-project-color) 40%, var(--pb-text)) !important;
+  background: color-mix(in srgb, var(--pb-project-color) 15%, var(--pb-card));
+  color: color-mix(in srgb, var(--pb-project-color) 40%, var(--pb-text));
 }
-.pikoboard .pb-color-5 {
+.pikoboard .pb-project.pb-color-5 {
   --pb-project-color: var(--pb-gray);
-  background: color-mix(in srgb, var(--pb-project-color) 15%, var(--pb-card)) !important;
-  color: color-mix(in srgb, var(--pb-project-color) 40%, var(--pb-text)) !important;
+  background: color-mix(in srgb, var(--pb-project-color) 15%, var(--pb-card));
+  color: color-mix(in srgb, var(--pb-project-color) 40%, var(--pb-text));
 }
 /* Deadlines tint only their chip, leaving cards and columns quiet. */
 .pikoboard .pb-due.pb-due-overdue {
@@ -771,7 +772,6 @@ body:is([data-pikoboard-appearance="piko"], [data-pikoboard-appearance="piko-lig
 .modal.pb-task-modal {
   width: min(780px, calc(100vw - 40px));
   max-width: 780px;
-  max-height: 82vh;
   max-height: 82dvh;
   padding: 24px;
   background: var(--pb-panel);
@@ -1040,7 +1040,6 @@ body:is([data-pikoboard-appearance="piko"], [data-pikoboard-appearance="piko-lig
   position: relative;
   appearance: none;
   -webkit-appearance: none;
-  position: relative;
   width: 16px;
   height: 16px;
   border: 1px solid var(--pb-line-hover);
@@ -1101,7 +1100,7 @@ body:is([data-pikoboard-appearance="piko"], [data-pikoboard-appearance="piko-lig
 .pikoboard .pb-check-text:hover {
   background: var(--pb-hover);
 }
-.pikoboard .pb-check-row:has(input[type='checkbox']:checked) .pb-check-text {
+.pikoboard .pb-check-row.is-complete .pb-check-text {
   color: var(--pb-muted);
   text-decoration: line-through;
 }
@@ -1664,7 +1663,6 @@ body:is([data-pikoboard-appearance="piko"], [data-pikoboard-appearance="piko-lig
   }
   .modal.pb-task-modal {
     width: calc(100vw - 20px);
-    max-height: 90vh;
     max-height: 90dvh;
     padding: 20px 16px;
   }
@@ -1705,12 +1703,6 @@ body:is([data-pikoboard-appearance="piko"], [data-pikoboard-appearance="piko-lig
     height: 32px;
   }
 }
-@media (prefers-reduced-motion: reduce) {
-  .pikoboard * {
-    transition: none !important;
-    animation: none !important;
-  }
-}
 
 /* Keep popup coordinates in the viewport, outside Obsidian pane containment. */
 .pikoboard.pb-floating-layer {
@@ -1741,11 +1733,6 @@ body:is([data-pikoboard-appearance="piko"], [data-pikoboard-appearance="piko-lig
 .pikoboard .pb-column-header .pb-status-icon svg {
   width: 18px;
   height: 18px;
-}
-.pikoboard .pb-option:has(.pb-status-icon) {
-  display: flex;
-  align-items: center;
-  gap: 8px;
 }
 .pikoboard .pb-trash {
   color: var(--pb-danger);
@@ -1818,6 +1805,11 @@ body:is([data-pikoboard-appearance="piko"], [data-pikoboard-appearance="piko-lig
     background 0.6s,
     border-color 0.6s;
 }
+@media (prefers-reduced-motion: reduce) {
+  .pikoboard .pb-new-task {
+    transition: none;
+  }
+}
 .pikoboard .pb-grip {
   display: flex;
   align-items: center;
@@ -1884,25 +1876,26 @@ body:is([data-pikoboard-appearance="piko"], [data-pikoboard-appearance="piko-lig
   background: transparent;
   min-height: 80px;
 }
-.pikoboard .pb-rich-editor .cm-scroller {
-  padding: 0 !important;
+.pikoboard .pb-rich-editor .markdown-source-view .cm-scroller {
+  padding: 0;
   overflow: visible;
   font-family: var(--font-text);
-  font-size: 13px !important;
+  font-size: 13px;
   line-height: 1.45;
 }
-.pikoboard .pb-rich-editor .cm-content {
-  padding: 0 !important;
+.pikoboard .pb-rich-editor .markdown-source-view .cm-content {
+  padding: 0;
   min-height: 80px;
   caret-color: var(--pb-accent);
 }
-.pikoboard .pb-rich-editor .cm-sizer {
+.pikoboard .pb-rich-editor .markdown-source-view .cm-sizer {
+  /* Obsidian writes the full note editor height inline. Keep embedded tasks compact. */
   min-height: 0 !important;
-  margin: 0 !important;
-  max-width: none !important;
-  padding: 0 !important;
+  margin: 0;
+  max-width: none;
+  padding: 0;
 }
-.pikoboard .pb-rich-editor .cm-line {
+.pikoboard .pb-rich-editor .markdown-source-view .cm-line {
   padding: 0;
   line-height: 1.45;
 }
@@ -1921,17 +1914,17 @@ body:is([data-pikoboard-appearance="piko"], [data-pikoboard-appearance="piko-lig
   user-select: none;
 }
 
-.pikoboard .pb-rich-editor .instant-convert-button {
-  display: none !important;
+.pikoboard .pb-rich-editor .markdown-source-view .instant-convert-button {
+  display: none;
 }
 
-.pikoboard .pb-rich-editor .HyperMD-header {
-  padding-top: 6px !important;
-  padding-bottom: 2px !important;
+.pikoboard .pb-rich-editor .markdown-source-view .HyperMD-header {
+  padding-top: 6px;
+  padding-bottom: 2px;
   line-height: 1.35;
 }
-.pikoboard .pb-rich-editor .cm-content {
-  font-size: 13px !important;
+.pikoboard .pb-rich-editor .markdown-source-view .cm-content {
+  font-size: 13px;
   --font-text-size: 13px;
 }
 .pikoboard .pb-rich-editor input[type='checkbox'] {
@@ -2698,8 +2691,7 @@ body:is([data-pikoboard-appearance="piko"], [data-pikoboard-appearance="piko-lig
 }
 .pikoboard .pb-next-text .task-list-item.is-checked {
   color: var(--pb-muted);
-  text-decoration: line-through;
-  text-decoration-color: var(--pb-muted);
+  text-decoration-line: line-through;
 }
 
 /* File boards share one compact layout; extra columns scroll horizontally. */

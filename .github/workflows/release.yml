@@ -17,6 +17,8 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     env:
       RELEASE_VERSION: ${{ inputs.version }}
     steps:
@@ -29,11 +31,19 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - run: npm ci --ignore-scripts
       - run: npm run release:check -- "$RELEASE_VERSION"
       - run: npm test
       - run: npm run check
       - run: npm run release:pack -- "$RELEASE_VERSION"
       - run: git diff --exit-code -- main.js styles.css
+      - name: Attest runtime assets
+        uses: actions/attest@v4
+        with:
+          subject-path: |
+            dist/pikoboard/main.js
+            dist/pikoboard/manifest.json
+            dist/pikoboard/styles.css
       - name: Create draft with reviewed assets
         env:
           GH_TOKEN: ${{ github.token }}
@@ -41,6 +51,5 @@ jobs:
         run: |
           gh release create "$RELEASE_VERSION" \
             dist/pikoboard/main.js dist/pikoboard/manifest.json dist/pikoboard/styles.css \
-            dist/pikoboard/LICENSE dist/pikoboard/THIRD-PARTY-LICENSES.txt dist/pikoboard/SHA256SUMS \
             --verify-tag --draft --title "PikoBoard $RELEASE_VERSION" \
             --notes-file docs/release-notes.md
