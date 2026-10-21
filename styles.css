@@ -2691,7 +2691,7 @@ body:is([data-pikoboard-appearance="piko"], [data-pikoboard-appearance="piko-lig
 }
 .pikoboard .pb-next-text .task-list-item.is-checked {
   color: var(--pb-muted);
-  text-decoration-line: line-through;
+  text-decoration: line-through;
 }
 
 /* File boards share one compact layout; extra columns scroll horizontally. */
