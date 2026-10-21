@@ -6,8 +6,7 @@ Before submission, verify the release package in a clean vault and finish the ho
 
 Areas that still need validation or design work:
 
-- English localization of the remaining task controls and commands.
 - Mobile layout, touch interactions and accessibility testing with assistive technology.
 - Ongoing compatibility testing of the embedded description editor across Obsidian versions.
 
-These are follow-up areas, not promises of a release date. The planner remains focused on boards, task notes, next steps and a journal. Bulk actions, a separate scheduling date and external icon libraries are outside the current scope.
+These are follow-up areas, not promises of a release date. The planner remains focused on boards, tasks, next steps and a journal.

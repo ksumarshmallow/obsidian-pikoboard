@@ -20,7 +20,7 @@ Description, matching the manifest:
 
 ## Reviewer notes
 
-PikoBoard is a standalone task board. It does not require TaskNotes or any other community plugin. Boards are stored as `.pikoboard` files; tasks are ordinary Markdown notes with properties, descriptions, next steps and journal entries. Preferences, drafts and recoverable deleted journal entries are stored locally in the plugin's `data.json`.
+PikoBoard organizes tasks on customizable boards. Boards are stored as `.pikoboard` files; tasks are ordinary Markdown notes with properties, descriptions, next steps and journal entries. Preferences, drafts and recoverable deleted journal entries are stored locally in the plugin's `data.json`.
 
 The plugin has no telemetry, account requirement, paid service, background network requests or self-updater. External links and embedded resources are rendered by Obsidian and may access the network. Attachments are copied from files explicitly selected by the user. Task deletion asks for confirmation and uses Obsidian's configured deletion behavior.
 
@@ -41,7 +41,7 @@ The local validation suite has 248 passing tests and 65 JavaScript syntax checks
 
 ## Submission handoff
 
-1. Publish the GitHub release tagged `0.12.1`, with `main.js`, `manifest.json` and `styles.css` attached. A Git tag or draft release alone is insufficient.
+1. The [0.12.1 release](https://github.com/ksumarshmallow/obsidian-pikoboard/releases/tag/0.12.1) is published with `main.js`, `manifest.json` and `styles.css` attached.
 2. Sign in to the [Obsidian Community directory](https://community.obsidian.md) with an Obsidian account and connect the owning GitHub account.
 3. Add a plugin using the repository URL above. The directory reads the manifest from the default branch.
 4. Review the developer policies and any account permissions before accepting and submitting. Use the reviewer notes above where the form allows additional context.

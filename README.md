@@ -15,8 +15,6 @@ Keep the board small and readable. Open a card when you need its description, ch
 - **Small everyday details.** Subtle due-date highlights, task templates, automatic archiving and undo for task properties, moves and manual archiving.
 - **Your theme.** Use the current Obsidian theme with `System`, or choose `pikoboard-dark` or `pikoboard-light`.
 
-No other community plugins, account or paid service required.
-
 ## Install
 
 PikoBoard is being prepared for the Obsidian Community directory. It is not listed there yet.
@@ -31,7 +29,7 @@ Open the vault, go to **Settings → Community plugins**, allow community plugin
 
 The repository includes the built plugin, so installation does not require Node.js or a build. If your vault uses a different configuration folder, replace `.obsidian` in the path above.
 
-For a manual installation, download the repository ZIP and copy `main.js`, `manifest.json`, `styles.css`, `LICENSE` and `THIRD-PARTY-LICENSES.txt` into `.obsidian/plugins/pikoboard/`. Once releases are published, the same runtime files will be available as release assets.
+For a manual installation, download `main.js`, `manifest.json`, `styles.css`, `LICENSE` and `THIRD-PARTY-LICENSES.txt` from the [latest release](https://github.com/ksumarshmallow/obsidian-pikoboard/releases/latest) and copy them into `.obsidian/plugins/pikoboard/`.
 
 ## Get started
 
@@ -40,7 +38,7 @@ For a manual installation, download the repository ZIP and copy `main.js`, `mani
 3. Open the title to write a description or add task properties. Changes save automatically.
 4. Drag the card between columns. Use its arrow to read or write the next step and journal without leaving the board.
 
-Controls, settings and commands are in English. See the [user guide](docs/usage.md) for the full workflow.
+See the [user guide](docs/usage.md) for the full workflow.
 
 ## Update
 

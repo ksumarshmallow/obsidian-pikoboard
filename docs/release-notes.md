@@ -1,9 +1,10 @@
-PikoBoard 0.12.1 makes the interface consistently English and clarifies the board toolbar.
+PikoBoard keeps your tasks on a board and their context in Markdown notes.
 
-- English buttons, commands, menus, dialogs, calendar labels and notifications.
-- Separate All tasks, In progress and Archive tabs, with an activity count badge.
-- Tags and Status filters with icons and selection counts. Multiselect menus stay open while selecting.
-- Saved filters replaces the ambiguous saved-view label.
-- New notes use English section headings and default folder names. Existing note content, folder settings and custom names remain intact.
+- Create boards with custom columns, colors and icons. Drag tasks and columns to organize your work.
+- Add descriptions, checklists, linked research and attachments to each task.
+- Pin a next step and keep a dated journal directly on the board.
+- Find work across boards with projects, tags, search and saved filters.
+- Track due dates, reuse task templates and archive completed work automatically.
+- Undo task moves, property changes and manual archiving.
 
-Requires Obsidian 1.14.4 or newer. Mobile behavior has not yet been verified.
+Requires Obsidian 1.14.4 or newer. Tested on macOS; mobile behavior has not yet been verified.

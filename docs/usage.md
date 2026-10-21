@@ -1,7 +1,5 @@
 # Using PikoBoard
 
-PikoBoard uses English for its controls, settings and commands. Your note content and custom names stay as you write them.
-
 ## Create a board
 
 Open **Settings → PikoBoard → Create board**, or run **PikoBoard: Create board** from the command palette. Choose a name and a vault folder. The board is a `.pikoboard` file you can reopen from the file explorer.
