@@ -29,7 +29,7 @@ Open the vault, go to **Settings → Community plugins**, allow community plugin
 
 The repository includes the built plugin, so installation does not require Node.js or a build. If your vault uses a different configuration folder, replace `.obsidian` in the path above.
 
-For a manual installation, download `main.js`, `manifest.json`, `styles.css`, `LICENSE` and `THIRD-PARTY-LICENSES.txt` from the [latest release](https://github.com/ksumarshmallow/obsidian-pikoboard/releases/latest) and copy them into `.obsidian/plugins/pikoboard/`.
+For a manual installation, download `main.js`, `manifest.json` and `styles.css` from the [latest release](https://github.com/ksumarshmallow/obsidian-pikoboard/releases/latest) and copy them into `.obsidian/plugins/pikoboard/`.
 
 ## Get started
 
@@ -48,7 +48,7 @@ Close task editors and disable PikoBoard before replacing its files. For a Git i
 git -C .obsidian/plugins/pikoboard pull --ff-only
 ```
 
-Enable PikoBoard again. For a manual installation, replace the five files listed above. Keep `data.json` – it contains preferences, drafts, card order and recoverable deleted entries. The Obsidian updater does not update this Git installation while the plugin is outside the Community directory.
+Enable PikoBoard again. For a manual installation, replace the three files listed above. Keep `data.json` – it contains preferences, drafts, card order and recoverable deleted entries. The Obsidian updater does not update this Git installation while the plugin is outside the Community directory.
 
 ## Data and privacy
 

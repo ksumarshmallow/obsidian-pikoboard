@@ -38,7 +38,7 @@ The build bundles static CommonJS imports into `main.js` and copies source CSS i
 
 Generated `main.js` and `styles.css` are committed so a Git clone is directly installable. Edit `src/`, rebuild, and include generated changes in the same commit. Release checks compare the files against a fresh in-memory build.
 
-Use a separate test vault. Copy the five files produced by `npm run release:pack` from `dist/pikoboard/` to that vault's plugin folder. Disable PikoBoard before replacement and enable it afterward. Never copy the source checkout over a live plugin's `data.json`.
+Use a separate test vault. Copy `main.js`, `manifest.json` and `styles.css` produced by `npm run release:pack` from `dist/pikoboard/` to that vault's plugin folder. Disable PikoBoard before replacement and enable it afterward. Never copy the source checkout over a live plugin's `data.json`.
 
 ## Persistence and lifecycle
 
