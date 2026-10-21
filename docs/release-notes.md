@@ -1,3 +1,3 @@
-Fix completed next-step checklist styling to use the broadly supported text-decoration shorthand.
+Remove the remaining forced style overrides. Collapsed controls now follow the hidden attribute through scoped selectors, and the embedded description editor keeps its compact layout through a scoped selector.
 
-Includes the theme compatibility and verifiable release improvements from 0.12.2. Requires Obsidian 1.14.4 or newer.
+Requires Obsidian 1.14.4 or newer.

@@ -198,12 +198,6 @@ body:is([data-pikoboard-appearance="piko"], [data-pikoboard-appearance="piko-lig
 .pb-prompt * {
   box-sizing: border-box;
 }
-.pikoboard [hidden],
-.pb-task-modal [hidden],
-.pb-prompt [hidden] {
-  /* Component display rules must not reveal collapsed content. */
-  display: none !important;
-}
 .pikoboard {
   background: var(--pb-bg);
 }
@@ -1889,8 +1883,7 @@ body:is([data-pikoboard-appearance="piko"], [data-pikoboard-appearance="piko-lig
   caret-color: var(--pb-accent);
 }
 .pikoboard .pb-rich-editor .markdown-source-view .cm-sizer {
-  /* Obsidian writes the full note editor height inline. Keep embedded tasks compact. */
-  min-height: 0 !important;
+  min-height: 0;
   margin: 0;
   max-width: none;
   padding: 0;
@@ -3258,4 +3251,12 @@ body:is([data-pikoboard-appearance="piko"], [data-pikoboard-appearance="piko-lig
     max-width: 100%;
     flex-basis: 100%;
   }
+}
+
+/* Visibility follows the hidden attribute, after component display rules.
+   The class attribute gives this rule priority over nested component layouts. */
+.pikoboard [class][hidden],
+.pb-task-modal [class][hidden],
+.pb-prompt [class][hidden] {
+  display: none;
 }
