@@ -422,6 +422,45 @@ test('rapid independent checklist clicks are retained and block clearing until w
   assert.equal(state.note().nextAction, step);
   gate.resolve();
   await Promise.all([first, second]);
-  assert.equal(state.note().nextAction, '- [x] First\n- [x] Second');
+  assert.equal(state.note().nextAction, '');
+  assert.equal(state.note().updates.length, 1);
+  assert.equal(state.note().updates[0].kind, 'done');
+  assert.equal(state.note().updates[0].text, '- [x] First\n- [x] Second');
   assert.equal(state.model.checkPending, 0);
+});
+
+test('completing a plain next step logs it once and keeps an unsaved rewrite', async () => {
+  const state = setup('Call the cafe');
+  await state.model.prepareNext();
+  state.model.setText('next', 'Choose a table');
+  assert.equal(await state.model.completeNext(), true);
+  assert.equal(state.note().nextAction, '');
+  assert.equal(state.note().updates[0].text, 'Call the cafe');
+  assert.equal(state.note().updates[0].kind, 'done');
+  assert.equal(state.model.nextDraft, 'Choose a table');
+  assert.equal(state.model.nextBase, '');
+  assert.equal(await state.model.completeNext(), false);
+  assert.equal(state.note().updates.length, 1);
+});
+test('failed completion leaves the step available for retry', async () => {
+  const state = setup('Call the cafe');
+  await state.model.prepareNext();
+  state.plugin.completeNext = async () => { throw new Error('Save failed'); };
+  assert.equal(await state.model.completeNext(), false);
+  assert.equal(state.model.next, 'Call the cafe');
+  assert.equal(state.note().updates.length, 0);
+  assert.equal(state.model.busy, false);
+});
+
+test('undo restores a completed step and removes its automatic event without replacing a newer step', () => {
+  const original = '- [x] Compare\n- [x] Choose';
+  const update = { id: 'undo-step', at: '2026-11-11T10:00:00Z', text: original, kind: 'done' };
+  const source = C.setNextAction('Description', '', original);
+  const completed = C.completeNextAction(source, original, update);
+  const restored = C.readNote(C.restoreCompletedAction(completed, update, ''));
+  assert.equal(restored.nextAction, original);
+  assert.equal(restored.updates.length, 0);
+  const newer = C.setNextAction(completed, '', 'Another step');
+  assert.throws(() => C.restoreCompletedAction(newer, update, ''), /NEXT_CONFLICT/);
+  assert.equal(C.readNote(newer).nextAction, 'Another step');
 });

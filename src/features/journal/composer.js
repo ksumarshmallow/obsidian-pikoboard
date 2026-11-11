@@ -1,7 +1,8 @@
 'use strict';
 const { Menu, setIcon } = require('obsidian');
+const { entryInput } = require('../../ui/entry-input.js');
 const C = require('../../domain/tasks.js');
-const { el, button, icon, grow } = require('../../ui/elements.js');
+const { el, button, icon, growEntry } = require('../../ui/elements.js');
 
 class JournalComposer {
   constructor(plugin, file, parent) {
@@ -67,6 +68,8 @@ class JournalComposer {
       e.preventDefault();
       this.submit();
     };
+    this.fileInput = entryInput(plugin, file, this.form, this.input,
+      () => this.model.setText(this.mode, this.input.value), (e) => this.model.fail(e));
     this.unsubscribe = this.model.subscribe(() => this.paint());
   }
   addChecklist() {
@@ -82,6 +85,7 @@ class JournalComposer {
     }
   }
   async submit() {
+    if (this.fileInput?.pending) return;
     const mode = this.mode,
       seq = this.modeSeq;
     const ok = await this.model.submit(mode);
@@ -136,9 +140,10 @@ class JournalComposer {
     this.error.textContent = this.model.error;
     this.error.hidden = !this.model.error;
     this.rebase.hidden = !this.model.conflict;
-    grow(this.input, 32, 120);
+    growEntry(this.input, 32, 120);
   }
   async setMode(mode) {
+    if (this.fileInput?.pending) return;
     const seq = (this.modeSeq = (this.modeSeq || 0) + 1);
     if (mode === 'next') {
       try {
@@ -151,7 +156,8 @@ class JournalComposer {
     if (this.disposed || seq !== this.modeSeq) return;
     this.mode = mode;
     this.paint();
-    this.input.focus();
+    this.input.focus({preventScroll: true});
+    if (this.form?.closest?.('.pb-task-modal')) this.form.scrollIntoView({block: 'nearest'});
   }
   appendLink(target, mode) {
     const link = this.plugin.app.fileManager.generateMarkdownLink(target, this.file.path);
@@ -188,6 +194,7 @@ class JournalComposer {
   }
   dispose() {
     this.disposed = true;
+    this.fileInput?.dispose();
     this.unsubscribe();
     this.model.save().catch(console.error);
   }

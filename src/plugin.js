@@ -9,6 +9,7 @@ const {
   Component,
   normalizePath,
 } = require('obsidian');
+const { editEntry } = require('./features/journal/inline-edit.js');
 const C = require('./domain/tasks.js');
 const S = require('./storage/task-store.js');
 const B = require('./storage/board-store.js');
@@ -16,7 +17,7 @@ const { SavedFilters } = require('./storage/saved-filters.js');
 const { TaskTemplates } = require('./storage/task-templates.js');
 const { TaskActions } = require('./features/tasks/task-actions.js');
 const { renamedProject } = require('./domain/filters.js');
-const { el, icon } = require('./ui/elements.js');
+const { el, icon, button } = require('./ui/elements.js');
 const { errorMessage } = require('./ui/format.js');
 const { appearanceController } = require('./ui/appearance.js');
 const { actionMenu, closeActionMenu } = require('./ui/menus.js');
@@ -24,7 +25,6 @@ const {
   AskModal,
   DeleteConfirmModal,
   ConfirmMessageModal,
-  EditMessageModal,
   PickModal,
 } = require('./ui/dialogs.js');
 const { JournalModel } = require('./features/journal/model.js');
@@ -392,6 +392,9 @@ class PikoBoard extends Plugin {
       this.refresh();
     });
   }
+  undoCompletedStep(file, update) {
+    return this.mutateMessage(file, update, (source) => C.restoreCompletedAction(source, update, ''));
+  }
   mutateMessage(file, expected, change) {
     return this.queue(file, async () => {
       await this.app.vault.process(file, (source) => {
@@ -508,9 +511,7 @@ class PikoBoard extends Plugin {
         label: 'Edit',
         icon: 'pencil',
         action: () =>
-          new EditMessageModal(this.app, update, (text) =>
-            this.editMessage(file, update, text),
-          ).open(),
+          editEntry(this, file, update, rendered),
       },
     ];
     if (update.kind === 'done')
@@ -561,24 +562,7 @@ class PikoBoard extends Plugin {
       input.oncancel = () => resolve();
       input.onchange = async () => {
         try {
-          const task = source && (await this.store.get(source.path));
-          const folder = this.storageFolder('attachmentsFolder', task);
-          await this.ensureFolder(folder);
-          for (const f of input.files) {
-            const safe = f.name.replace(/[\\/:*?"<>|]/g, '_');
-            let path = normalizePath((folder ? folder + '/' : '') + safe),
-              n = 2;
-            const dot = safe.lastIndexOf('.');
-            while (this.app.vault.getAbstractFileByPath(path))
-              path = normalizePath(
-                (folder ? folder + '/' : '') +
-                  (dot > 0 ? safe.slice(0, dot) : safe) +
-                  ' ' +
-                  n++ +
-                  (dot > 0 ? safe.slice(dot) : ''),
-              );
-            await callback(await this.app.vault.createBinary(path, await f.arrayBuffer()));
-          }
+          await this.importMaterials(Array.from(input.files), callback, source);
           resolve();
         } catch (e) {
           reject(e);
@@ -586,6 +570,26 @@ class PikoBoard extends Plugin {
       };
       input.click();
     });
+  }
+  async importMaterials(files, callback, source) {
+    const task = source && (await this.store.get(source.path));
+    const folder = this.storageFolder('attachmentsFolder', task);
+    await this.ensureFolder(folder);
+    for (const f of files) {
+      const safe = f.name.replace(/[\\/:*?"<>|]/g, '_');
+      let path = normalizePath((folder ? folder + '/' : '') + safe),
+        n = 2;
+      const dot = safe.lastIndexOf('.');
+      while (this.app.vault.getAbstractFileByPath(path))
+        path = normalizePath(
+          (folder ? folder + '/' : '') +
+            (dot > 0 ? safe.slice(0, dot) : safe) +
+            ' ' +
+            n++ +
+            (dot > 0 ? safe.slice(dot) : ''),
+        );
+      await callback(await this.app.vault.createBinary(path, await f.arrayBuffer()));
+    }
   }
   async tasks() {
     const system = new Set(this.systemTags().map((t) => t.toLowerCase()));
@@ -752,6 +756,7 @@ class PikoBoard extends Plugin {
     return this.app.workspace.getLeaf('tab').openFile(file);
   }
   disposeHistory(container) {
+    container.querySelectorAll?.('.pb-inline-entry').forEach((editor) => editor._dispose?.());
     container._seq = (container._seq || 0) + 1;
     container._component?.unload();
     container._component = null;
@@ -764,7 +769,35 @@ class PikoBoard extends Plugin {
     const { updates, nextAction } = await this.note(file);
     if (seq !== container._seq || !container.isConnected) return;
     this.journal(file).syncNext(nextAction || '');
-    const signature = JSON.stringify([updates, new Date().toDateString()]);
+    const oldestFirst = this.data.journalOrder === 'oldest';
+    if (!container._sortBar) {
+      const bar = el(container.parentNode, 'div', 'pb-history-tools');
+      container.parentNode.insertBefore(bar, container);
+      container._sortBar = bar;
+      container._sortButton = button(bar, '', async (event) => {
+        event.stopPropagation();
+        const previous = this.data.journalOrder;
+        container._sortButton.disabled = true;
+        this.data.journalOrder = this.data.journalOrder === 'oldest' ? 'newest' : 'oldest';
+        try {
+          await this.persist();
+          container.scrollTop = 0;
+          await this.history(container, file, owner);
+          this.refresh();
+        } catch (error) {
+          this.data.journalOrder = previous;
+          new Notice(errorMessage(error));
+        } finally {
+          container._sortButton.disabled = false;
+        }
+      }, 'pb-history-sort');
+    }
+    container._sortBar.hidden = updates.length < 2;
+    container._sortButton.textContent = oldestFirst ? '↑ Oldest first' : '↓ Newest first';
+    container._sortButton.setAttribute('aria-label',
+      oldestFirst ? 'Oldest first. Show newest first' : 'Newest first. Show oldest first');
+    if (container.querySelector?.('.pb-inline-entry')) return;
+    const signature = JSON.stringify([updates, oldestFirst, new Date().toDateString()]);
     if (container._signature === signature) return;
     const scroll = container.scrollTop,
       stage = document.createElement('div');
@@ -775,7 +808,7 @@ class PikoBoard extends Plugin {
     let committed = false;
     try {
       let previous = '';
-      for (const u of updates) {
+      for (const u of (oldestFirst ? [...updates].reverse() : updates)) {
         if (seq !== container._seq) return;
         const date = new Date(u.at),
           group = date.toDateString();
@@ -784,8 +817,16 @@ class PikoBoard extends Plugin {
           previous = group;
         }
         const message = el(stage, 'div', 'pb-message');
-        if (u.kind === 'done') el(message, 'span', 'pb-message-kind', 'Done');
-        const text = el(message, 'div', 'pb-message-text markdown-rendered');
+        let body = message;
+        if (u.kind === 'done') {
+          message.classList.add('pb-system-message');
+          const checks = C.parseChecklist(u.text);
+          if (checks.length) {
+            body = el(message, 'details', 'pb-completed-details');
+            el(body, 'summary', 'pb-system-label', `✓ Step completed · ${checks.filter((c) => c.checked).length}/${checks.length}`);
+          } else el(message, 'span', 'pb-system-label', '✓ Step completed');
+        }
+        const text = el(body, 'div', 'pb-message-text markdown-rendered');
         await MarkdownRenderer.render(this.app, u.text, text, file.path, component);
         if (seq !== container._seq) return;
         text.querySelectorAll('a.internal-link').forEach(
@@ -821,6 +862,7 @@ class PikoBoard extends Plugin {
         message.oncontextmenu = (e) => this.messageMenu(e, file, u, text, menuButton);
       }
       if (seq !== container._seq || !container.isConnected) return;
+      if (container.querySelector?.('.pb-inline-entry')) return;
       container._component?.unload();
       container._component = component;
       container.replaceChildren(...stage.childNodes);

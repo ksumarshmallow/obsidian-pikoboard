@@ -102,47 +102,6 @@ class ConfirmMessageModal extends Modal {
     this.resolve(this.confirmed);
   }
 }
-class EditMessageModal extends Modal {
-  constructor(app, update, save) {
-    super(app);
-    Object.assign(this, { update, save });
-  }
-  onOpen() {
-    this.modalEl.addClass('pb-message-editor');
-    this.contentEl.addClass('pikoboard');
-    el(this.contentEl, 'h3', '', 'Edit entry');
-    const input = el(this.contentEl, 'textarea', 'pb-message-edit-input');
-    input.value = this.update.text;
-    input.setAttribute('aria-label', 'Entry text');
-    const actions = el(this.contentEl, 'div', 'pb-delete-actions');
-    button(actions, 'Cancel', () => this.close());
-    const save = button(
-      actions,
-      'Save',
-      async () => {
-        if (this.busy || !input.value.trim()) return;
-        this.busy = true;
-        save.disabled = true;
-        try {
-          await this.save(input.value.trim());
-          this.close();
-        } catch (e) {
-          new Notice(errorMessage(e));
-          this.busy = false;
-          save.disabled = false;
-        }
-      },
-      'pb-new',
-    );
-    input.onkeydown = (e) => {
-      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault();
-        save.click();
-      }
-    };
-    input.focus();
-  }
-}
 class PickModal extends FuzzySuggestModal {
   constructor(app, items, callback, placeholder) {
     super(app);
@@ -161,4 +120,4 @@ class PickModal extends FuzzySuggestModal {
   }
 }
 
-module.exports = { AskModal, DeleteConfirmModal, ConfirmMessageModal, EditMessageModal, PickModal };
+module.exports = { AskModal, DeleteConfirmModal, ConfirmMessageModal, PickModal };

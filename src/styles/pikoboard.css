@@ -2251,15 +2251,34 @@ body:is([data-pikoboard-appearance="piko"], [data-pikoboard-appearance="piko-lig
   display: block;
   min-width: 0;
   margin: 0;
-  padding: 8px 10px;
+  padding: 14px 10px 10px;
   border: 0;
   border-top: 1px solid var(--pb-line-soft);
   background: transparent;
   border-radius: 0;
 }
 .pikoboard .pb-journal > .pb-journal-composer {
-  padding: 0;
-  border-top: 0;
+  margin-top: 14px;
+  padding: 14px 0 2px;
+  border-top: 1px solid var(--pb-line-soft);
+}
+.pikoboard .pb-history-tools {
+  display: flex;
+  justify-content: flex-end;
+  padding: 6px 10px 0;
+}
+.pikoboard .pb-history-sort {
+  background: transparent;
+  box-shadow: none;
+  border: 0;
+  color: var(--pb-muted);
+  font-size: 11px;
+  min-height: 28px;
+  padding: 4px 6px;
+}
+.pikoboard .pb-history-sort:hover {
+  background: var(--pb-hover);
+  color: var(--pb-text);
 }
 .pikoboard .pb-composer-modes {
   display: flex;
@@ -3260,3 +3279,76 @@ body:is([data-pikoboard-appearance="piko"], [data-pikoboard-appearance="piko-lig
 .pb-prompt [class][hidden] {
   display: none;
 }
+
+.pikoboard .pb-inline-entry { padding: 8px 0; }
+.pikoboard .pb-inline-entry .pb-comment-input { width: 100%; min-height: 80px; font-size: 14px; }
+.pikoboard .pb-link-suggestions { display: flex; flex-direction: column; gap: 4px; padding: 8px; border: 1px solid var(--background-modifier-border); border-radius: 8px; max-height: 220px; overflow: auto; background: var(--background-secondary); }
+.pikoboard .pb-link-suggestions[hidden] { display: none; }
+.pikoboard .pb-link-suggestions button { text-align: left; justify-content: flex-start; white-space: normal; overflow-wrap: anywhere; }
+.pikoboard .is-file-dragover { outline: 2px solid var(--interactive-accent); outline-offset: -2px; }
+
+.pikoboard .pb-complete-step {
+  grid-column: 1 / -1;
+  justify-self: start;
+  margin-top: 6px;
+  padding: 4px 9px;
+  min-height: 26px;
+  font-size: 12px;
+  color: var(--pb-accent);
+  background: var(--pb-accent-soft);
+}
+.pikoboard .pb-complete-step[hidden] { display: none; }
+.pikoboard .pb-message.pb-system-message {
+  background: transparent;
+  border-radius: 0;
+  border-left: 2px solid var(--pb-accent-line);
+  padding: 6px 10px;
+}
+.pikoboard .pb-system-label { color: var(--pb-muted); font-size: 12px; font-weight: 500; }
+.pikoboard .pb-completed-details summary { cursor: pointer; }
+.pikoboard .pb-system-message .pb-message-text { font-size: 13px; font-weight: 400; }
+.pikoboard .pb-completed-details[open] .pb-message-text { margin-top: 8px; }
+
+.pikoboard .pb-inline-entry .pb-entry-edit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding-top: 8px;
+}
+.pikoboard .pb-entry-edit-actions .pb-new { margin-left: auto; }
+
+.pikoboard .pb-link-suggestions[popover] {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  box-sizing: border-box;
+  color: var(--text-normal);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+
+/* The task window is a document with one scroll surface; board cards stay compact. */
+.modal.pb-task-modal {
+  width: min(900px, calc(100vw - 32px));
+  max-width: 900px;
+  max-height: 90dvh;
+}
+.pb-task-modal .modal-content { scroll-padding: 16px; }
+.pb-task-modal .pikoboard .pb-modal-feed {
+  height: auto;
+  max-height: none;
+  overflow: visible;
+  overscroll-behavior: auto;
+}
+.pb-task-modal .pikoboard .pb-comment-input {
+  max-height: none;
+  overflow-y: hidden;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.pb-task-modal .pb-inline-entry { scroll-margin-top: 16px; }
+.pb-task-modal .pb-journal > .pb-journal-composer { margin-top: 0; border-top: 0; }
+.pb-task-modal .pb-rich-editor { max-height: none; overflow: visible; }
+.pb-task-modal .pb-body-wrap.is-empty .pb-rich-editor,
+.pb-task-modal .pb-body-wrap.is-empty .pb-rich-editor .markdown-source-view,
+.pb-task-modal .pb-body-wrap.is-empty .pb-rich-editor .cm-editor { min-height: 44px; }

@@ -548,6 +548,7 @@ test('history renders commit atomically and a stale render cannot replace a newe
   });
   const plugin = Object.create(f.PikoBoard.prototype);
   plugin.app = {};
+  plugin.data = {};
   plugin.journal = () => ({ syncNext() {} });
   let text = 'Old';
   plugin.note = async () => ({
@@ -555,6 +556,7 @@ test('history renders commit atomically and a stale render cannot replace a newe
     nextAction: '',
   });
   const container = new Element();
+  new Element().append(container);
   container.connected = true;
   container.textContent = 'Previous complete feed';
   container.scrollTop = 17;
@@ -587,6 +589,7 @@ test('history change then undo during rendering keeps the previously committed f
   });
   const plugin = Object.create(f.PikoBoard.prototype);
   plugin.app = {};
+  plugin.data = {};
   plugin.journal = () => ({ syncNext() {} });
   let text = 'Original';
   plugin.note = async () => ({
@@ -594,6 +597,7 @@ test('history change then undo during rendering keeps the previously committed f
     nextAction: '',
   });
   const container = new Element();
+  new Element().append(container);
   container.connected = true;
   await plugin.history(container, { path: 'Task.md' });
   const committed = container.textContent;
@@ -1131,4 +1135,52 @@ test('toolbar exposes English views, a separate active count and clearly named f
   await view.refresh();
   assert.equal(view.filterBar.tagsButton.querySelector('.pb-picker-label').textContent, 'Tags (2)');
   assert.equal(view.filterBar.columnButton.querySelector('.pb-picker-label').textContent, 'Status (1)');
+});
+
+
+test('journal sorting persists, reverses the view and preserves the original entries', async () => {
+  const f = fixture(async (app, text, node) => { node.textContent = text; });
+  const plugin = Object.create(f.PikoBoard.prototype);
+  plugin.app = {};
+  plugin.data = {};
+  plugin.journal = () => ({ syncNext() {} });
+  let saved;
+  plugin.persist = async () => { saved = plugin.data.journalOrder; };
+  plugin.refresh = () => {};
+  const updates = [
+    { id: 'new', at: '2026-10-22T12:00:00Z', text: 'New entry' },
+    { id: 'old', at: '2026-10-21T12:00:00Z', text: 'Old entry' },
+  ];
+  plugin.note = async () => ({ updates });
+  const container = new Element();
+  new Element().append(container);
+  container.connected = true;
+  const file = { path: 'Task.md' };
+  await plugin.history(container, file);
+  const messages = () => container.children.filter(x => x.classes().includes('pb-message')).map(x => x.textContent);
+  assert.match(messages()[0], /New entry/);
+  assert.equal(container._sortBar.hidden, false);
+  await container._sortButton.onclick({ stopPropagation() {} });
+  assert.equal(saved, 'oldest');
+  assert.match(messages()[0], /Old entry/);
+  assert.equal(updates[0].id, 'new');
+  await container._sortButton.onclick({ stopPropagation() {} });
+  assert.match(messages()[0], /New entry/);
+});
+
+test('history refresh preserves an active inline edit until it closes', async () => {
+  const f = fixture(async (app, text, node) => { node.textContent = text; });
+  const plugin = Object.create(f.PikoBoard.prototype);
+  plugin.app = {}; plugin.data = {};
+  plugin.journal = () => ({syncNext() {}});
+  plugin.note = async () => ({updates:[{id:'new',at:'2026-11-11T12:00:00Z',text:'External update'}]});
+  const container = new Element(), editor = new Element();
+  new Element().append(container); container.connected = true;
+  editor.className = 'pb-inline-entry'; editor.textContent = 'Unsaved edit'; container.append(editor);
+  await plugin.history(container, {path:'Task.md'});
+  assert.equal(container.textContent, 'Unsaved edit');
+  assert.equal(editor.isConnected, true);
+  editor.remove();
+  await plugin.history(container, {path:'Task.md'});
+  assert.match(container.textContent, /External update/);
 });

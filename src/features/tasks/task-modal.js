@@ -121,6 +121,20 @@ class TaskModal extends Modal {
         this.editor.blur();
       }
     };
+    this.bodyWrap.addEventListener('dragover', (e) => {
+      if (!Array.from(e.dataTransfer?.types || []).includes('Files')) return;
+      e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'copy';
+      this.bodyWrap.classList.add('is-file-dragover');
+    }, true);
+    this.bodyWrap.addEventListener('dragleave', () => this.bodyWrap.classList.remove('is-file-dragover'));
+    this.bodyWrap.addEventListener('drop', (e) => {
+      if (!Array.from(e.dataTransfer?.types || []).includes('Files')) return;
+      e.preventDefault(); e.stopPropagation();
+      this.bodyWrap.classList.remove('is-file-dragover');
+      this.plugin.importMaterials(Array.from(e.dataTransfer.files),
+        (target) => this.attachNote(target), this.file).catch((error) => this.fail(error));
+    }, true);
+    this.bodyWrap.classList.toggle('is-empty', !this.session.value.trim());
     this.mountRichEditor();
     const tools = el(this.bodyWrap, 'div', 'pb-body-tools');
     this.bodyTools = tools;
@@ -155,6 +169,7 @@ class TaskModal extends Modal {
     this.feed.setAttribute('role', 'region');
     this.feed.setAttribute('aria-label', 'History');
     this.journalComposer = new JournalComposer(this.plugin, this.file, journal);
+    journal.insertBefore(this.journalComposer.form, this.feed);
     this.updateInput = this.journalComposer.input;
     this.send = this.journalComposer.send;
     this.compose = this.journalComposer.form;
@@ -501,6 +516,7 @@ class TaskModal extends Modal {
   }
   inputBody() {
     this.session.set(this.editor.value);
+    this.bodyWrap?.classList.toggle('is-empty', !this.editor.value.trim());
     this.scheduleSave();
     grow(this.editor);
   }

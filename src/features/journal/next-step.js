@@ -1,17 +1,18 @@
 'use strict';
 const { MarkdownRenderer, Component } = require('obsidian');
 const C = require('../../domain/tasks.js');
-const { el, icon } = require('../../ui/elements.js');
+const { el, icon, button } = require('../../ui/elements.js');
 
 function nextStep(parent, plugin, file, edit) {
   const wrap = el(parent, 'div', 'pb-next-step');
   wrap.hidden = true;
-  el(wrap, 'span', 'pb-next-label', 'Next step');
+  const label = el(wrap, 'span', 'pb-next-label', 'Next step');
   const content = el(wrap, 'div', 'pb-next-text markdown-rendered');
   const change = icon(wrap, 'pencil', 'Edit next step', edit);
   change.classList.add('pb-next-edit');
   const done = icon(wrap, 'x', 'Clear next step', () => model.clearNext());
   done.classList.add('pb-next-remove');
+  const complete = button(wrap, 'Complete step', () => model.completeNext(), 'pb-complete-step');
   const model = plugin.journal(file);
   let signature = null,
     component = null,
@@ -19,6 +20,10 @@ function nextStep(parent, plugin, file, edit) {
     seq = 0;
   const unsubscribe = model.subscribe(() => {
     wrap.hidden = !model.next;
+    const progress = C.parseChecklist(model.next);
+    label.textContent = 'Next step' + (progress.length ? ` · ${progress.filter((c) => c.checked).length}/${progress.length}` : '');
+    complete.hidden = !!progress.length && !progress.every((c) => c.checked);
+    complete.disabled = !!(model.busy || model.checkPending);
     done.disabled = change.disabled = !!(model.busy || model.checkPending);
     content.querySelectorAll('input[type=checkbox]').forEach((box) => {
       if (box.dataset.pbCheck) box.disabled = !!model.busy;

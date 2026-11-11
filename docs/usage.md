@@ -20,7 +20,7 @@ Type a tag such as `#reading` and press **Enter**. It becomes a chip; continue t
 
 Click the description to edit. Formatting, checklists and links are handled by the embedded Obsidian editor. It saves as you work and when focus moves away. If the embedded editor cannot load, a text field lets you edit the same Markdown content.
 
-The description's **Checklist** and **Materials** controls appear while editing. Materials can link an existing note, create a research note or copy a selected file into the vault. The journal composer also has an attachment control.
+The description's **Checklist** and **Materials** controls appear while editing. Materials can link an existing note, create a research note or copy a selected file into the vault. New and edited journal entries also have attachment controls. Drag files from your file manager into a description or journal editor to copy them into the configured attachment folder. Type `[[` in a journal editor to search notes and files by path and insert a link.
 
 ## Next step and journal
 
@@ -31,12 +31,15 @@ On the board, the card arrow expands the next step, journal and composer togethe
 | **Entry** | Adds a journal entry. Enter sends; Shift+Enter inserts a line break. |
 | **Next step** | Replaces the task's pinned next step. It can be text or a checklist. |
 | Pencil on the next step | Loads the existing text for editing. |
+| **Complete step** | Moves a plain-text next step into the journal, with an Undo option. |
 | Cross on the next step | Clears it, with an undo option. |
 | Entry menu `⋯` | Copies, edits or deletes that entry. Deletion asks for confirmation. |
 
-For a next-step checklist, Enter continues the list; Enter on an empty item ends it. **Cmd/Ctrl+Enter** saves the step. Checking an item does not complete the task or automatically write a journal entry. You decide what to record.
+For a next-step checklist, Enter continues the list; Enter on an empty item ends it. **Cmd/Ctrl+Enter** saves the step. A checklist shows its completed-item count. Checking the last remaining item moves the step into the journal as one automatic completion event; individual checks do not add messages. This completes the step, not the task. Completion offers **Undo** for ten seconds. The entry menu can also restore a completed step later. Automatic events use a compact style, and completed checklists can be expanded.
 
-Journal entries appear newest first, grouped by date. Deleted entries can be restored immediately or through **PikoBoard: Restore deleted entry**. Drafts are shared between the expanded card and task editor.
+Journal entries appear newest first, grouped by date. Use **Newest first / Oldest first** to reverse their order. Choose **Edit** in an entry menu to edit it in place with attachment controls. **Save** or **Enter** saves; **Shift+Enter** inserts a line break and **Cancel** discards the edit. While link suggestions are open, Enter inserts the selected suggestion first.
+
+The task window has a single scrolling area. Journal editors grow with their text, and the new-entry composer sits above history. Expanded board cards retain their compact layout. Deleted entries can be restored immediately or through **PikoBoard: Restore deleted entry**. Drafts are shared between the expanded card and task editor.
 
 ## Find work across boards
 

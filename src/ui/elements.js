@@ -36,6 +36,10 @@ function grow(input, min = 64, max = 280) {
   input.style.height = 'auto';
   input.style.height = Math.max(min, Math.min(max, input.scrollHeight)) + 'px';
 }
+function growEntry(input, min = 32, max = 120) {
+  const modal = input.closest?.('.pb-task-modal');
+  grow(input, min, modal ? Infinity : max);
+}
 function configInput(parent, title, value, type = 'text') {
   const label = el(parent, 'label', 'pb-config-field');
   el(label, 'span', '', title);
@@ -46,4 +50,4 @@ function configInput(parent, title, value, type = 'text') {
   return input;
 }
 
-module.exports = { statusMark, tint, el, button, icon, grow, configInput };
+module.exports = { statusMark, tint, el, button, icon, grow, growEntry, configInput };

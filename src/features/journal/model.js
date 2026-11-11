@@ -1,4 +1,5 @@
 'use strict';
+const C = require('../../domain/tasks.js');
 const { Notice } = require('obsidian');
 const { el } = require('../../ui/elements.js');
 const { errorMessage } = require('../../ui/format.js');
@@ -131,7 +132,41 @@ class JournalModel {
     } finally {
       this.checkPending--;
       this.notify();
+      const checks = C.parseChecklist(this.next);
+      if (!this.checkPending && checks.length && checks.every((item) => item.checked))
+        await this.completeNext();
     }
+  }
+  async completeNext() {
+    if (this.busy || this.checkPending || !this.next) return false;
+    const expected = this.next;
+    const update = { id: crypto.randomUUID(), at: new Date().toISOString(), text: expected, kind: 'done' };
+    this.busy = true;
+    this.error = '';
+    this.notify();
+    try {
+      await this.plugin.completeNext(this.file, expected, update);
+      this.next = '';
+      if (this.nextDraft !== undefined && this.nextDraft !== expected) this.nextBase = '';
+      else { this.nextDraft = undefined; this.nextBase = undefined; }
+      await this.save();
+      this.plugin.refresh();
+      const fragment = document.createDocumentFragment();
+      el(fragment, 'span', '', 'Step completed. ');
+      const undo = el(fragment, 'button', 'pb-notice-undo', 'Undo');
+      undo.onclick = async () => {
+        undo.disabled = true;
+        try {
+          // Never replace a newer next step when undoing this completion.
+          await this.plugin.undoCompletedStep(this.file, update);
+          this.syncNext(expected);
+          notice.hide();
+        } catch (e) { undo.disabled = false; this.fail(e); }
+      };
+      const notice = new Notice(fragment, 10000);
+      return true;
+    } catch (e) { this.fail(e); return false; }
+    finally { this.busy = false; this.notify(); }
   }
   async clearNext() {
     if (this.busy || this.checkPending || !this.next) return;
